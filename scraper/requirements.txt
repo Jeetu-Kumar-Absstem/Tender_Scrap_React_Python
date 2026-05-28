@@ -26,7 +26,8 @@ pydantic==2.7.1
 tenacity==8.3.0          # retry logic
 structlog==24.1.0         # structured JSON logging
 python-dateutil==2.9.0
-hashlib-additional==0.1.0
+hashlib-additional==1.2
 
 # Rate limiting
 ratelimit==2.2.1
+structlog

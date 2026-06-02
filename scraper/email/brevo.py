@@ -11,6 +11,8 @@ Logic:
 """
 
 from __future__ import annotations
+import base64
+import io
 import os
 import structlog
 from datetime import datetime, timezone
@@ -117,6 +119,170 @@ def _build_html(tenders: list[dict]) -> str:
     """
 
 
+
+def _build_pdf(tenders: list[dict]) -> bytes:
+    """
+    Generate a PDF digest of tenders.
+    Each tender shows: Title (hyperlink), Reference No, Portal, Closing Date, Direct URL.
+    Returns raw PDF bytes.
+    """
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (
+        SimpleDocTemplate, Table, TableStyle, Paragraph,
+        Spacer, HRFlowable
+    )
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=1.5*cm, rightMargin=1.5*cm,
+        topMargin=1.5*cm, bottomMargin=1.5*cm,
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "TenderTitle",
+        parent=styles["Normal"],
+        fontSize=9,
+        textColor=colors.HexColor("#1D4ED8"),
+        leading=12,
+    )
+    cell_style = ParagraphStyle(
+        "Cell",
+        parent=styles["Normal"],
+        fontSize=8,
+        textColor=colors.HexColor("#374151"),
+        leading=11,
+    )
+    url_style = ParagraphStyle(
+        "URL",
+        parent=styles["Normal"],
+        fontSize=7,
+        textColor=colors.HexColor("#6B7280"),
+        leading=10,
+    )
+    header_style = ParagraphStyle(
+        "Header",
+        parent=styles["Normal"],
+        fontSize=8,
+        textColor=colors.white,
+        fontName="Helvetica-Bold",
+        leading=11,
+    )
+
+    today = datetime.now(timezone.utc).strftime("%d %B %Y")
+    elements = []
+
+    # ── Title block ──────────────────────────────────────────
+    elements.append(Paragraph(
+        f"<b>TenderPulse Daily Digest — {today}</b>",
+        ParagraphStyle("H1", parent=styles["Normal"],
+                       fontSize=16, textColor=colors.HexColor("#1D4ED8"),
+                       spaceAfter=4)
+    ))
+    elements.append(Paragraph(
+        f"{len(tenders)} new tender{'s' if len(tenders) != 1 else ''} found across "
+        f"{len(set(t.get('source_site','') for t in tenders))} portal{'s' if len(set(t.get('source_site','') for t in tenders)) != 1 else ''}",
+        ParagraphStyle("Sub", parent=styles["Normal"],
+                       fontSize=10, textColor=colors.HexColor("#6B7280"),
+                       spaceAfter=12)
+    ))
+    elements.append(HRFlowable(width="100%", thickness=1,
+                                color=colors.HexColor("#E5E7EB"), spaceAfter=12))
+
+    # ── Table ────────────────────────────────────────────────
+    col_widths = [7.5*cm, 3.5*cm, 3*cm, 2.5*cm]  # Title | Ref No | Portal | Deadline
+
+    # Header row
+    table_data = [[
+        Paragraph("<b>Tender Title</b>", header_style),
+        Paragraph("<b>Reference No</b>", header_style),
+        Paragraph("<b>Portal</b>", header_style),
+        Paragraph("<b>Closing Date</b>", header_style),
+    ]]
+
+    for t in tenders:
+        url      = t.get("source_url") or ""
+        title    = t.get("title") or "Untitled"
+        ref      = t.get("reference_number") or "—"
+        site     = t.get("source_site") or "—"
+        deadline = t.get("deadline") or "—"
+        kws      = ", ".join(t.get("keywords_matched") or [])
+
+        # Title as hyperlink + keyword tag below
+        title_para = Paragraph(
+            f'<a href="{url}" color="#1D4ED8"><u>{title}</u></a>'
+            f'<br/><font size="6" color="#9CA3AF">🔑 {kws}</font>',
+            title_style
+        )
+        # URL on its own line below ref
+        ref_para = Paragraph(
+            f"{ref}",
+            cell_style
+        )
+        site_para  = Paragraph(site, cell_style)
+        date_para  = Paragraph(
+            f'<font color="#DC2626"><b>{deadline}</b></font>' if deadline != "—" else "—",
+            cell_style
+        )
+
+        table_data.append([title_para, ref_para, site_para, date_para])
+
+        # URL row spanning all columns
+        table_data.append([
+            Paragraph(f'<a href="{url}" color="#6B7280"><u>{url[:90]}{"…" if len(url)>90 else ""}</u></a>',
+                      url_style),
+            "", "", ""
+        ])
+
+    tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
+    tbl.setStyle(TableStyle([
+        # Header
+        ("BACKGROUND",   (0, 0), (-1, 0), colors.HexColor("#1D4ED8")),
+        ("TEXTCOLOR",    (0, 0), (-1, 0), colors.white),
+        ("FONTNAME",     (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE",     (0, 0), (-1, 0), 8),
+        ("TOPPADDING",   (0, 0), (-1, 0), 6),
+        ("BOTTOMPADDING",(0, 0), (-1, 0), 6),
+        # Data rows
+        ("FONTSIZE",     (0, 1), (-1, -1), 8),
+        ("TOPPADDING",   (0, 1), (-1, -1), 5),
+        ("BOTTOMPADDING",(0, 1), (-1, -1), 4),
+        ("LEFTPADDING",  (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("VALIGN",       (0, 0), (-1, -1), "TOP"),
+        # Alternating row colours (skip URL rows which are even-indexed after header)
+        *[("BACKGROUND", (0, i), (-1, i), colors.HexColor("#F9FAFB"))
+          for i in range(2, len(table_data), 4)],
+        # URL rows — span and light background
+        *[("SPAN",       (0, i), (-1, i)) for i in range(2, len(table_data), 2)],
+        *[("BACKGROUND", (0, i), (-1, i), colors.HexColor("#F3F4F6"))
+          for i in range(2, len(table_data), 2)],
+        *[("TOPPADDING", (0, i), (-1, i), 2) for i in range(2, len(table_data), 2)],
+        *[("BOTTOMPADDING",(0,i),(-1, i), 4) for i in range(2, len(table_data), 2)],
+        # Grid
+        ("GRID",         (0, 0), (-1, -1), 0.5, colors.HexColor("#E5E7EB")),
+        ("LINEBELOW",    (0, 0), (-1, 0),  1,   colors.HexColor("#1D4ED8")),
+    ]))
+
+    elements.append(tbl)
+    elements.append(Spacer(1, 12))
+    elements.append(Paragraph(
+        "Generated by TenderPulse — Automated Government Tender Monitoring",
+        ParagraphStyle("Footer", parent=styles["Normal"],
+                       fontSize=7, textColor=colors.HexColor("#9CA3AF"),
+                       alignment=TA_CENTER)
+    ))
+
+    doc.build(elements)
+    return buf.getvalue()
+
+
 def send_digest(
     tenders: list[dict],
     run_id: Optional[str] = None,
@@ -168,6 +334,10 @@ def send_digest(
                 "to": [{"email": r} for r in recipients],
                 "subject":   subject,
                 "htmlContent": html_body,
+                "attachment": [{
+                    "name":    f"TenderPulse_{today.replace(' ', '_')}.pdf",
+                    "content": base64.b64encode(_build_pdf(tenders)).decode(),
+                }],
             },
             timeout=15,
         )

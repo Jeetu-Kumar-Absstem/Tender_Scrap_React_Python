@@ -21,7 +21,7 @@ from enum import Enum
 class SiteType(str, Enum):
     A = "A"   # Static HTML
     B = "B"   # JS rendered (Playwright)
-    C = "C"   # API / structured
+    C = "C"   # API / structured/ playwright/selenium optional
     D = "D"   # Login / subscription wall
 
 
@@ -32,11 +32,29 @@ class TenderStatus(str, Enum):
 
 
 # ─── Keyword lists ───────────────────────────────────────────
-INCLUDE_KEYWORDS: list[str] = [
-    "oxygen", "psa", "nitrogen", "amc", "cmc",
-    "medical gas", "gas plant", "vpsa", "pressure swing",
-    "liquid oxygen", "lox", "concentrator", "o2 plant",
-    "psa plant", "nitrogen plant", "gas generation",
+INCLUDE_KEYWORDS: list[str] =[
+    # From PSA Oxygen Plant
+    "oxygen plant", "psa oxygen generation plant", "pressure swing adsorption oxygen",
+    "medical oxygen generation plant", "oxygen plant sitc", "on-site oxygen generation",
+    "oxygen generator plant", "oxygen gas generator", "psa oxygen",
+
+    # PSA Nitrogen Plant
+    "psa nitrogen plant", "psa nitrogen generator", "pressure swing adsorption nitrogen",
+    "nitrogen generation plant", "nitrogen plant sitc", "on-site nitrogen generation",
+    "nitrogen gas generator", "psa nitrogen",
+    
+    # From AMC / CMC - PSA
+    "amc psa oxygen plant", "cmc psa oxygen plant", "annual maintenance contract oxygen plant",
+    "camc psa", "comprehensive maintenance contract", "preventive maintenance oxygen generator",
+    "service contract psa plant", "breakdown maintenance oxygen plant",
+    
+    # From Other
+    "psa plant amc", "psa plant cmc", "medical gas plant maintenance",
+    "oxygen nitrogen plant service contract", "mgps maintenance",
+    "psa plant spare parts", "oxygen plant repair maintenance",
+    
+    # Additional from your INCLUDE_KEYWORDS (merged where applicable)
+    "vpsa", "liquid oxygen", "lox", "concentrator", "o2 plant", "gas plant", "gas generation"
 ]
 
 REJECT_KEYWORDS: list[str] = [
@@ -118,19 +136,19 @@ SITES: list[SiteConfig] = [
     # ── Type C — API/structured (no LLM needed) ─────────────
     SiteConfig(
         name="GeM",
-        url="https://mkp.gem.gov.in/api/v2/search?q={keyword}&page=1",
+        url="https://bidplus.gem.gov.in/all-bids#",
         site_type=SiteType.C,
-        notes="REST API. Returns JSON. keyword param injected at runtime.",
+        notes="playwright and selenium scarper",
     ),
     SiteConfig(
         name="eProcure / CPPP",
-        url="https://eprocure.gov.in/mmp/latestactivetenders",
-        site_type=SiteType.C,
-        notes="Structured HTML table. Date param available.",
+        url="https://eprocure.gov.in/eprocure/app",
+        site_type=SiteType.B,
+        notes="Central NIC portal. Same Playwright scraper as state portals.",
     ),
 
     # ── Type B — NIC portal family (one Playwright scraper) ─
-    SiteConfig(name="Andaman & Nicobar", url="https://eprocure.andaman.gov.in/nicgep/app",         site_type=SiteType.B),
+    SiteConfig(name="Andaman & Nicobar", url="https://eprocure.andamannicobar.gov.in/nicgep/app",         site_type=SiteType.B),
     SiteConfig(name="Arunachal Pradesh", url="https://arunachaltenders.gov.in/nicgep/app",         site_type=SiteType.B),
     SiteConfig(name="Assam",             url="https://assamtenders.gov.in/nicgep/app",             site_type=SiteType.B),
     SiteConfig(name="Chandigarh",        url="https://etenders.chd.nic.in/nicgep/app",             site_type=SiteType.B),
@@ -173,40 +191,40 @@ SITES: list[SiteConfig] = [
     SiteConfig(
         name="HLL Lifecare",
         url="https://www.lifecarehll.com/tender/",
-        site_type=SiteType.B,
+        site_type=SiteType.A,
         notes="Medical/PSA tenders. JS rendered.",
     ),
 
     # ── Type A — Static HTML commercial aggregators ──────────
-    SiteConfig(
-        name="Tender Detail",
-        url="https://www.tenderdetail.com/tenders/search?kwd=psa+oxygen",
-        site_type=SiteType.A,
-        use_scrapedo=True,    # may block bots — route via scrape.do
-        notes="Commercial aggregator. May rate-limit.",
-    ),
-    SiteConfig(
-        name="Tenders on Time",
-        url="https://www.tendersontime.com/tenders/oxygen-psa-tender/",
-        site_type=SiteType.A,
-        use_scrapedo=True,
-    ),
-    SiteConfig(
-        name="Tender Info",
-        url="https://www.tenderinfo.org/search.aspx?k=psa+oxygen",
-        site_type=SiteType.A,
-        use_scrapedo=True,
-    ),
-    SiteConfig(
-        name="Tender18",
-        url="https://www.tender18.com/tenders/?q=psa+oxygen",
-        site_type=SiteType.A,
-    ),
-    SiteConfig(
-        name="e-Tender India",
-        url="https://www.etender.in/search/?q=psa+oxygen",
-        site_type=SiteType.A,
-    ),
+    # SiteConfig(
+    #     name="Tender Detail",
+    #     url="https://www.tenderdetail.com/tenders/search?kwd=psa+oxygen",
+    #     site_type=SiteType.A,
+    #     use_scrapedo=True,    # may block bots — route via scrape.do
+    #     notes="Commercial aggregator. May rate-limit.",
+    # ),
+    # SiteConfig(
+    #     name="Tenders on Time",
+    #     url="https://www.tendersontime.com/tenders/oxygen-psa-tender/",
+    #     site_type=SiteType.A,
+    #     use_scrapedo=True,
+    # ),
+    # SiteConfig(
+    #     name="Tender Info",
+    #     url="https://www.tenderinfo.org/search.aspx?k=psa+oxygen",
+    #     site_type=SiteType.A,
+    #     use_scrapedo=True,
+    # ),
+    # SiteConfig(
+    #     name="Tender18",
+    #     url="https://www.tender18.com/tenders/?q=psa+oxygen",
+    #     site_type=SiteType.A,
+    # ),
+    # SiteConfig(
+    #     name="e-Tender India",
+    #     url="https://www.etender.in/search/?q=psa+oxygen",
+    #     site_type=SiteType.A,
+    # ),
 
     # ── Type D — Login/paid (skip scraping, use alert emails) ─
     # These are listed for reference only. Scraper skips them.
@@ -238,4 +256,5 @@ SITES_BY_TYPE = {
     SiteType.D: [s for s in SITES if s.site_type == SiteType.D],
 }
 
-ACTIVE_SITES = [s for s in SITES if s.site_type != SiteType.D]
+# Current pipeline scope: Type B only
+ACTIVE_SITES = SITES_BY_TYPE[SiteType.B]

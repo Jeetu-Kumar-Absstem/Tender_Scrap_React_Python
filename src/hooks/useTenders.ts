@@ -24,6 +24,16 @@ export function useTenders(filters: TenderFilters = {}) {
       if (filters.date_from) query = query.gte('scraped_at', filters.date_from)
       if (filters.date_to)   query = query.lte('scraped_at', filters.date_to)
       if (filters.keyword) query = query.contains('keywords_matched', [filters.keyword])
+
+      // user_status filter
+      if (filters.user_status && filters.user_status !== 'all') {
+        if (filters.user_status === 'active') {
+          query = query.in('user_status', ['active', 'starred'])
+        } else {
+          query = query.eq('user_status', filters.user_status)
+        }
+      }
+
       if (filters.search) {
         query = query.or(
           `title.ilike.%${filters.search}%,organization.ilike.%${filters.search}%,reference_number.ilike.%${filters.search}%`
@@ -47,7 +57,14 @@ export function useTodaysTenders() {
   return useQuery({
     queryKey: ['tenders', 'today'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('todays_tenders').select('*')
+      const today = new Date().toISOString().split('T')[0]
+      const { data, error } = await supabase
+        .from('tenders')
+        .select('*')
+        .is('deleted_at', null)
+        .eq('status', 'PASS')
+        .gte('scraped_at', today)
+        .order('scraped_at', { ascending: false })
       if (error) throw new Error(error.message)
       return (data ?? []) as Tender[]
     },

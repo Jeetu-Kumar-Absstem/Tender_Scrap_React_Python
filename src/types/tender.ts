@@ -4,6 +4,10 @@
 export type SiteType = 'A' | 'B' | 'C' | 'D'
 export type TenderStatus = 'PASS' | 'REJECT' | 'ERROR'
 export type RunStatus = 'running' | 'completed' | 'failed'
+// Add this type
+export type UserStatus = 'active' | 'done' | 'starred'
+
+
 
 // ─── Core tender record (mirrors DB row) ────────────────────
 export interface Tender {
@@ -24,6 +28,8 @@ export interface Tender {
   status: TenderStatus
   scraped_at: string                // ISO timestamptz
   deleted_at: string | null
+  // Add this field inside the Tender interface
+  user_status: UserStatus
 }
 
 // ─── Scrape run record ───────────────────────────────────────
@@ -60,6 +66,7 @@ export interface TenderFilters {
   source_site?: string
   site_type?: SiteType
   keyword?: string
+  user_status?: UserStatus | 'all'
   deadline_before?: string
   deadline_after?: string
   date_from?: string

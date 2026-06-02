@@ -1,208 +1,258 @@
 """
-scraper/scrapers/type_a.py  (FIXED)
-─────────────────────────────────────
-Fixes applied:
-  1. Added full cookie session warmup before scraping (many aggregators 
-     check session continuity)
-  2. Better bot-block detection — check status code AND body content
-  3. scrape.do fallback is now always tried on 403/429/block detection,
-     not just when use_scrapedo=True in config
-  4. Added Content-Type check — some sites return 200 with an error page
-  5. Keyword pre-filter before calling LLM (saves API cost)
-  6. Returns list[TenderRecord] for consistency with type_b and type_c
-     (type_a previously returned Optional[TenderRecord])
+scraper/scrapers/type_a.py
+HLL Lifecare scraper for the public tender listing.
+
+This module keeps the original helper structure from the standalone script,
+but returns TenderRecord objects compatible with the existing pipeline and DB
+shape.
 """
 
 from __future__ import annotations
-import os
-import random
-import time
-import structlog
-import httpx
-from typing import Optional
-from tenacity import (
-    retry, stop_after_attempt, wait_exponential,
-    retry_if_exception_type,
-)
 
-from ..core.schema import SiteConfig, INCLUDE_KEYWORDS
-from ..core.extractor import process_page, check_reject_keywords
-from ..core.schema import TenderRecord
-from ..llm.extractor import BaseLLMExtractor
+import re
+from pathlib import Path
+from typing import Optional
+from urllib.parse import urljoin
+
+import pdfplumber
+import requests
+import structlog
+from bs4 import BeautifulSoup
+
+from ..core.schema import INCLUDE_KEYWORDS, SiteConfig, TenderRecord, TenderStatus
 
 log = structlog.get_logger()
 
-_USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
-]
+BASE_URL = "https://www.lifecarehll.com"
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 Chrome/137.0 Safari/537.36"
+    )
+}
 
-_last_request: dict[str, float] = {}
-_MIN_DELAY = 2.5  # seconds between requests to same domain
-
-
-def _rate_limit(domain: str) -> None:
-    last    = _last_request.get(domain, 0)
-    elapsed = time.time() - last
-    if elapsed < _MIN_DELAY:
-        wait = _MIN_DELAY - elapsed + random.uniform(0.2, 1.0)
-        log.debug("rate_limit.sleep", domain=domain, seconds=round(wait, 2))
-        time.sleep(wait)
-    _last_request[domain] = time.time()
+DOWNLOAD_DIR = Path(__file__).resolve().parent.parent / "downloads" / "hll"
+DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _build_headers(referer: Optional[str] = None) -> dict[str, str]:
-    h = {
-        "User-Agent":                random.choice(_USER_AGENTS),
-        "Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language":           "en-IN,en-GB;q=0.9,en;q=0.8",
-        "Accept-Encoding":           "gzip, deflate, br",
-        "Connection":                "keep-alive",
-        "DNT":                       "1",
-        "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest":            "document",
-        "Sec-Fetch-Mode":            "navigate",
-        "Sec-Fetch-Site":            "none" if not referer else "same-origin",
-        "Sec-Fetch-User":            "?1",
-    }
-    if referer:
-        h["Referer"] = referer
-    return h
+def normalize(text: str) -> str:
+    text = text.lower()
+    text = re.sub(r"\s+", " ", text)
+    return text
 
 
-def _extract_domain(url: str) -> str:
-    from urllib.parse import urlparse
-    return urlparse(url).netloc
+def find_matching_keywords(text: str) -> list[str]:
+    text = normalize(text)
+    matches: list[str] = []
+    for keyword in INCLUDE_KEYWORDS:
+        if keyword.lower() in text:
+            matches.append(keyword)
+    return matches
 
 
-def _is_blocked(status: int, body: str) -> bool:
-    """Detect bot-block responses regardless of status code."""
-    if status in (403, 429, 503):
-        return True
-    if status == 200 and len(body) < 200:
-        return True
-    block_signals = [
-        "access denied", "captcha required", "cloudflare",
-        "403 forbidden", "you have been blocked",
-        "unusual traffic", "please verify", "ddos protection",
-        "ray id",  # Cloudflare ray ID
-    ]
-    body_lower = body[:2000].lower()
-    return any(s in body_lower for s in block_signals)
+def get_total_pages(session: requests.Session) -> int:
+    html = session.get(f"{BASE_URL}/tender", headers=HEADERS, timeout=30).text
+    soup = BeautifulSoup(html, "html.parser")
+
+    pages: list[int] = []
+    for a in soup.select("#filter_pagination a"):
+        href = a.get("href", "")
+        match = re.search(r"/p/(\d+)", href)
+        if match:
+            pages.append(int(match.group(1)))
+
+    return max(pages) if pages else 1
 
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=3, max=15),
-    retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException)),
-    reraise=True,
-)
-def _fetch_direct(url: str) -> str:
-    from urllib.parse import urlparse
-    domain  = _extract_domain(url)
-    origin  = f"{urlparse(url).scheme}://{domain}"
-    _rate_limit(domain)
+def scrape_tender_page(page_no: int, session: requests.Session) -> list[dict]:
+    if page_no == 1:
+        url = f"{BASE_URL}/tender"
+    else:
+        url = f"{BASE_URL}/tender/index/p/{page_no}"
 
-    with httpx.Client(
-        timeout=20,
-        follow_redirects=True,
-        headers=_build_headers(),
-    ) as client:
-        # Warm up: hit homepage first for session cookie
-        try:
-            client.get(origin, timeout=8, headers=_build_headers())
-        except Exception:
-            pass
+    html = session.get(url, headers=HEADERS, timeout=30).text
+    soup = BeautifulSoup(html, "html.parser")
 
-        resp = client.get(url, headers=_build_headers(referer=origin))
-        resp.raise_for_status()
+    table = soup.find("table", class_="table_general")
+    if not table:
+        return []
 
-        try:
-            return resp.text
-        except UnicodeDecodeError:
-            return resp.content.decode("latin-1", errors="replace")
+    tenders: list[dict] = []
+    rows = table.find_all("tr")[1:]
 
+    for row in rows:
+        cols = row.find_all("td")
+        if len(cols) < 4:
+            continue
 
-@retry(
-    stop=stop_after_attempt(2),
-    wait=wait_exponential(min=5, max=20),
-    retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException)),
-    reraise=True,
-)
-def _fetch_via_scrapedo(url: str) -> str:
-    token = os.environ.get("SCRAPEDO_TOKEN", "")
-    if not token:
-        raise ValueError("SCRAPEDO_TOKEN not set")
+        link = cols[1].find("a")
+        if not link:
+            continue
 
-    api_url = (
-    f"https://api.scrape.do"
-    f"?token={token}&url={url}&render=true&waitUntil=networkidle0&super=true"
-)
-    with httpx.Client(timeout=35) as client:
-        resp = client.get(api_url)
-        resp.raise_for_status()
-        return resp.text
+        tenders.append(
+            {
+                "title": link.get_text(strip=True),
+                "url": urljoin(BASE_URL, link.get("href", "")),
+                "ref_no": cols[2].get_text(strip=True),
+                "category": cols[3].get_text(strip=True),
+            }
+        )
+
+    return tenders
 
 
-# ─── Main entry point ─────────────────────────────────────────
+def get_detail_page_text_and_pdfs(detail_url: str, session: requests.Session) -> tuple[str, list[str]]:
+    try:
+        html = session.get(detail_url, headers=HEADERS, timeout=30).text
+        soup = BeautifulSoup(html, "html.parser")
+
+        page_text = soup.get_text(" ", strip=True)
+        pdf_links: list[str] = []
+
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if ".pdf" in href.lower():
+                pdf_links.append(urljoin(BASE_URL, href))
+
+        return page_text, list(set(pdf_links))
+    except Exception as exc:
+        log.warning("type_a.detail_page_failed", url=detail_url, error=str(exc))
+        return "", []
+
+
+def download_pdf(pdf_url: str, session: requests.Session) -> Optional[str]:
+    try:
+        filename = pdf_url.split("/")[-1]
+        filename = re.sub(r"[^a-zA-Z0-9._-]", "_", filename)
+
+        filepath = DOWNLOAD_DIR / filename
+
+        if not filepath.exists():
+            response = session.get(pdf_url, headers=HEADERS, timeout=60)
+            response.raise_for_status()
+            filepath.write_bytes(response.content)
+
+        return str(filepath)
+    except Exception as exc:
+        log.warning("type_a.pdf_download_failed", url=pdf_url, error=str(exc))
+        return None
+
+
+def extract_pdf_text(pdf_file: str) -> str:
+    try:
+        text = ""
+        with pdfplumber.open(pdf_file) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+        return text
+    except Exception as exc:
+        log.warning("type_a.pdf_read_failed", file=pdf_file, error=str(exc))
+        return ""
+
+
+def _build_record(
+    site_config: SiteConfig,
+    tender: dict,
+    matches: list[str],
+    pdf_links: list[str],
+    run_id: Optional[str],
+) -> TenderRecord:
+    return TenderRecord(
+        source_site=site_config.name,
+        source_url=tender["url"],
+        site_type=site_config.site_type.value,
+        run_id=run_id,
+        title=tender.get("title"),
+        reference_number=tender.get("ref_no"),
+        organization=tender.get("category"),
+        deadline=None,
+        estimated_value=None,
+        location=None,
+        document_urls=pdf_links,
+        keywords_matched=matches,
+        status=TenderStatus.PASS.value,
+    )
+
+
+def process_tender(
+    tender: dict,
+    site_config: SiteConfig,
+    run_id: Optional[str],
+    session: requests.Session,
+) -> Optional[TenderRecord]:
+    detail_text, pdf_links = get_detail_page_text_and_pdfs(tender["url"], session)
+
+    combined_text = f'{tender["title"]}\n{tender.get("ref_no", "")}\n{detail_text}'
+
+    for pdf_url in pdf_links:
+        pdf_file = download_pdf(pdf_url, session)
+        if not pdf_file:
+            continue
+        combined_text += "\n" + extract_pdf_text(pdf_file)
+
+    matches = find_matching_keywords(combined_text)
+    if not matches:
+        return None
+
+    log.info(
+        "type_a.match_found",
+        site=site_config.name,
+        title=tender.get("title"),
+        ref_no=tender.get("ref_no"),
+        keywords=matches,
+    )
+    return _build_record(site_config, tender, matches, pdf_links, run_id)
+
+
 def scrape_type_a(
     site_config: SiteConfig,
-    llm: BaseLLMExtractor,
     run_id: Optional[str] = None,
 ) -> list[TenderRecord]:
     """
-    Returns list[TenderRecord] — consistent with type_b and type_c.
-    Empty list on failure (pipeline continues safely).
+    Scrape HLL Lifecare tender listings and return matching TenderRecord rows.
     """
-    url = site_config.url
-    log.info("type_a.start", site=site_config.name, url=url)
-
-    raw_html: Optional[str] = None
-    scrapedo_token = os.environ.get("SCRAPEDO_TOKEN", "")
-
-    # ── Attempt 1: direct fetch ──────────────────────────────
-    try:
-        html = _fetch_direct(url)
-        if _is_blocked(200, html):
-            log.warning("type_a.soft_block", site=site_config.name)
-            raise ValueError("soft block detected")
-        raw_html = html
-        log.debug("type_a.direct_ok", site=site_config.name, chars=len(raw_html))
-
-    except Exception as exc:
-        log.warning("type_a.direct_failed", site=site_config.name, error=str(exc))
-
-        # ── Attempt 2: scrape.do (if token available) ────────
-        if scrapedo_token:
-            try:
-                raw_html = _fetch_via_scrapedo(url)
-                log.info("type_a.scrapedo_ok", site=site_config.name, chars=len(raw_html))
-            except Exception as exc2:
-                log.error("type_a.scrapedo_failed", site=site_config.name, error=str(exc2))
-                return []
-        else:
-            log.warning("type_a.no_scrapedo_token",
-                        site=site_config.name,
-                        hint="Set SCRAPEDO_TOKEN in .env to bypass bot protection")
-            return []
-
-    if not raw_html:
+    if site_config.name != "HLL Lifecare":
+        log.info("type_a.unsupported_site", site=site_config.name, url=site_config.url)
         return []
 
-    # ── Keyword pre-filter (free — no LLM call yet) ──────────
-    raw_lower = raw_html.lower()
-    has_keyword = any(kw.lower() in raw_lower for kw in INCLUDE_KEYWORDS)
-    if not has_keyword:
-        log.info("type_a.no_keywords", site=site_config.name)
-        return []   # page has nothing relevant — skip LLM entirely
+    session = requests.Session()
+    session.headers.update(HEADERS)
 
-    # ── process_page (clean → window → LLM) ──────────────────
-    record = process_page(
-        raw_html=raw_html,
-        site_config=site_config,
-        llm=llm,
-        run_id=run_id,
-    )
-    return [record] if record else []
+    try:
+        total_pages = get_total_pages(session)
+        log.info("type_a.pages_found", site=site_config.name, pages=total_pages)
+
+        all_records: list[TenderRecord] = []
+        seen_keys: set[str] = set()
+
+        for page_no in range(1, total_pages + 1):
+            try:
+                tenders = scrape_tender_page(page_no, session)
+            except Exception as exc:
+                log.warning("type_a.page_failed", site=site_config.name, page=page_no, error=str(exc))
+                continue
+
+            for tender in tenders:
+                try:
+                    key = tender.get("ref_no") or tender.get("url")
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+
+                    record = process_tender(tender, site_config, run_id, session)
+                    if record:
+                        all_records.append(record)
+                except Exception as exc:
+                    log.warning(
+                        "type_a.tender_failed",
+                        site=site_config.name,
+                        title=tender.get("title"),
+                        error=str(exc),
+                    )
+
+        log.info("type_a.done", site=site_config.name, records=len(all_records))
+        return all_records
+    finally:
+        session.close()

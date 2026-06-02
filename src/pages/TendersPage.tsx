@@ -3,13 +3,54 @@ import { useState, useCallback } from 'react'
 import { useTenders } from '../hooks/useTenders'
 import TenderCard from '../components/tenders/TenderCard'
 import { Search, SlidersHorizontal, X, Loader2 } from 'lucide-react'
-import type { TenderFilters, SiteType } from '../types/tender'
+import type { TenderFilters, SiteType, UserStatus } from '../types/tender'
 import { useInView } from '../hooks/useInView'
 
-const KEYWORDS = ['oxygen', 'psa', 'nitrogen', 'amc', 'cmc', 'medical gas', 'lox']
+const KEYWORDS = [
+  'psa plant',
+  'psa oxygen plant',
+  'psa oxygen generation plant',
+  'pressure swing adsorption oxygen',
+  'medical oxygen generation plant',
+  'oxygen plant sitc',
+  'on-site oxygen generation',
+  'oxygen generator plant',
+  'oxygen gas generator',
+  'psa oxygen',
+  'psa nitrogen plant',
+  'psa nitrogen generator',
+  'pressure swing adsorption nitrogen',
+  'nitrogen generation plant',
+  'nitrogen plant sitc',
+  'on-site nitrogen generation',
+  'nitrogen gas generator',
+  'psa nitrogen',
+  'amc psa oxygen plant',
+  'cmc psa oxygen plant',
+  'annual maintenance contract oxygen plant',
+  'camc psa',
+  'comprehensive maintenance contract',
+  'preventive maintenance oxygen generator',
+  'service contract psa plant',
+  'breakdown maintenance oxygen plant',
+  'psa plant amc',
+  'psa plant cmc',
+  'medical gas plant maintenance',
+  'oxygen nitrogen plant service contract',
+  'mgps maintenance',
+  'psa plant spare parts',
+  'oxygen plant repair maintenance',
+  'vpsa',
+  'liquid oxygen',
+  'lox',
+  'concentrator',
+  'o2 plant',
+  'gas plant',
+  'gas generation',
+]
 
 export default function TendersPage() {
-  const [filters, setFilters] = useState<TenderFilters>({})
+  const [filters, setFilters] = useState<TenderFilters>({ user_status: 'all' })
   const [showFilters, setShowFilters] = useState(false)
   const [search, setSearch] = useState('')
 
@@ -25,7 +66,9 @@ export default function TendersPage() {
     setFilters(f => ({ ...f, search: search || undefined }))
   }, [search])
 
-  const activeFilters = Object.entries(filters).filter(([, v]) => v !== undefined)
+  const activeFilters = Object.entries(filters).filter(([k, v]) =>
+    v !== undefined && !(k === 'user_status' && v === 'all')
+  )
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-4">
@@ -61,7 +104,7 @@ export default function TendersPage() {
       </div>
 
       {showFilters && (
-        <div className="bg-white border border-slate-200 rounded-xl p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 grid grid-cols-2 md:grid-cols-5 gap-3">
           <div>
             <label className="text-xs font-medium text-slate-500 block mb-1">Site Type</label>
             <select value={filters.site_type ?? ''} onChange={e => setFilters(f => ({ ...f, site_type: e.target.value as SiteType || undefined }))}
@@ -90,6 +133,21 @@ export default function TendersPage() {
             <input type="date" value={filters.deadline_before ?? ''} onChange={e => setFilters(f => ({ ...f, deadline_before: e.target.value || undefined }))}
               className="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none" />
           </div>
+
+          {/* Status filter */}
+          <div>
+            <label className="text-xs font-medium text-slate-500 block mb-1">Status</label>
+            <select
+              value={filters.user_status ?? 'all'}
+              onChange={e => setFilters(f => ({ ...f, user_status: e.target.value as UserStatus | 'all' }))}
+              className="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none"
+            >
+              <option value="all">All</option>
+              <option value="active">Active</option>
+              <option value="starred">★ Starred</option>
+              <option value="done">✓ Done</option>
+            </select>
+          </div>
         </div>
       )}
 
@@ -98,10 +156,15 @@ export default function TendersPage() {
           {activeFilters.map(([key, val]) => (
             <span key={key} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-full">
               {key}: {String(val)}
-              <button onClick={() => setFilters(f => { const n = { ...f }; delete n[key as keyof TenderFilters]; return n })}><X size={10} /></button>
+              <button onClick={() => setFilters(f => {
+                const n = { ...f }
+                if (key === 'user_status') n.user_status = 'all'
+                else delete n[key as keyof TenderFilters]
+                return n
+              })}><X size={10} /></button>
             </span>
           ))}
-          <button onClick={() => { setFilters({}); setSearch('') }} className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1">Clear all</button>
+          <button onClick={() => { setFilters({ user_status: 'all' }); setSearch('') }} className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1">Clear all</button>
         </div>
       )}
 

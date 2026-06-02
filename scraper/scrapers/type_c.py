@@ -1,391 +1,381 @@
 """
-scraper/scrapers/type_c.py  (FIXED)
-─────────────────────────────────────
-Fixes applied:
-  1. GeM — old mkp.gem.gov.in API returns 403. 
-     Real working endpoint: bidplus.gem.gov.in/bidlists with browser session.
-     GeM blocks plain httpx (checks TLS fingerprint + cookies).
-     Fix: use Playwright for GeM too, scrape the HTML bid listing table.
-     
-  2. eProcure — eprocure.gov.in also blocks plain requests.
-     Fix: use httpx with full cookie session + Referer chain,
-     or fall back to their public XML feed which doesn't require auth.
-     
-  3. Both now have proper fallback logic and don't crash the pipeline.
+scraper/scrapers/type_c.py
+GeM BidPlus scraper for https://bidplus.gem.gov.in/all-bids#
+
+This keeps the original search-and-pagination behavior from the standalone
+script, but emits TenderRecord rows that match the existing pipeline shape.
 """
 
 from __future__ import annotations
-import hashlib
-import structlog
-import httpx
-from datetime import datetime, timezone
-from typing import Optional
 
-from ..core.schema import SiteConfig, TenderRecord, TenderStatus, INCLUDE_KEYWORDS
-from ..llm.extractor import BaseLLMExtractor
+import asyncio
+import random
+import re
+from datetime import datetime
+from typing import Optional
+from urllib.parse import urljoin
+
+import structlog
+from playwright.async_api import Browser, BrowserContext, Page, async_playwright
+
+from ..core.schema import INCLUDE_KEYWORDS, SiteConfig, TenderRecord, TenderStatus
 
 log = structlog.get_logger()
 
-# Full browser-like headers — needed for govt portals that check headers
-_HEADERS = {
-    "User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language":           "en-IN,en-GB;q=0.9,en;q=0.8",
-    "Accept-Encoding":           "gzip, deflate, br",
-    "Connection":                "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Dest":            "document",
-    "Sec-Fetch-Mode":            "navigate",
-    "Sec-Fetch-Site":            "none",
-    "Sec-Fetch-User":            "?1",
-    "sec-ch-ua":                 '"Chromium";v="124", "Google Chrome";v="124"',
-    "sec-ch-ua-mobile":          "?0",
-    "sec-ch-ua-platform":        '"Windows"',
-    "DNT":                       "1",
-}
+_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+]
+
+_VIEWPORTS = [
+    {"width": 1920, "height": 1080},
+    {"width": 1600, "height": 900},
+    {"width": 1536, "height": 864},
+    {"width": 1366, "height": 768},
+]
 
 
-def _make_record(
-    site_config: SiteConfig,
-    run_id: Optional[str],
-    title: Optional[str],
-    reference_number: Optional[str],
-    organization: Optional[str],
-    deadline: Optional[str],
-    estimated_value: Optional[str],
-    location: Optional[str],
-    document_urls: list[str],
-    source_url: str,
-    keywords_matched: list[str],
-) -> TenderRecord:
-    url_hash = hashlib.md5(source_url.encode()).hexdigest()
-    return TenderRecord(
-        source_site=site_config.name,
-        source_url=source_url,
-        site_type=site_config.site_type.value,
-        run_id=run_id,
-        url_hash=url_hash,
-        title=title,
-        reference_number=reference_number,
-        organization=organization,
-        deadline=deadline,
-        estimated_value=estimated_value,
-        location=location,
-        document_urls=document_urls,
-        keywords_matched=keywords_matched,
-        status=TenderStatus.PASS,
-        scraped_at=datetime.now(timezone.utc).isoformat(),
+async def _human_delay(min_ms: int = 120, max_ms: int = 350) -> None:
+    await asyncio.sleep(random.uniform(min_ms / 1000, max_ms / 1000))
+
+
+async def _stealth_context(browser: Browser) -> BrowserContext:
+    context = await browser.new_context(
+        user_agent=random.choice(_USER_AGENTS),
+        viewport=random.choice(_VIEWPORTS),
+        locale="en-IN",
+        timezone_id="Asia/Kolkata",
+        ignore_https_errors=True,
+        extra_http_headers={
+            "Accept-Language": "en-IN,en-GB;q=0.9,en;q=0.8",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "DNT": "1",
+        },
     )
 
-
-# ─── GeM scraper (FIXED) ─────────────────────────────────────
-def _scrape_gem(
-    site_config: SiteConfig,
-    run_id: Optional[str],
-) -> list[TenderRecord]:
-    """
-    GeM bidplus portal.
-    
-    Working approach: 
-    1. Hit bidplus.gem.gov.in/bidlists?bidlists&searchBid=KEYWORD
-    2. This is a server-rendered HTML page — parse the bid cards
-    3. Use httpx with a session (cookie jar) + Referer to pass bot checks
-    
-    If still blocked → returns empty list (pipeline continues).
-    """
-    from bs4 import BeautifulSoup
-    records:  list[TenderRecord] = []
-    seen_ids: set[str]           = set()
-
-    with httpx.Client(
-        timeout=20,
-        follow_redirects=True,
-        headers=_HEADERS,
-    ) as client:
-
-        # Step 1: Hit homepage first to get session cookie
-        try:
-            client.get("https://bidplus.gem.gov.in/", timeout=10)
-        except Exception:
-            pass
-
-        # Step 2: Search each keyword
-        for keyword in INCLUDE_KEYWORDS[:6]:
-            try:
-                search_url = (
-                    f"https://bidplus.gem.gov.in/bidlists"
-                    f"?bidlists&searchBid={keyword.replace(' ', '+')}&page_no=1"
-                )
-                resp = client.get(
-                    search_url,
-                    headers={**_HEADERS, "Referer": "https://bidplus.gem.gov.in/"},
-                    timeout=15,
-                )
-
-                if resp.status_code != 200:
-                    log.warning("gem.search_blocked",
-                                keyword=keyword, status=resp.status_code)
-                    continue
-
-                soup = BeautifulSoup(resp.text, "lxml")
-
-                # GeM bid cards have class "bid-list-card" or similar
-                # Try multiple selectors
-                bid_items = (
-                    soup.select(".bid-list-card") or
-                    soup.select(".bidding-list") or
-                    soup.select("div[id^='bid_']") or
-                    soup.select("tr.bid-row") or
-                    soup.select("table tr")[1:]   # table fallback
-                )
-
-                if not bid_items:
-                    log.debug("gem.no_cards", keyword=keyword, url=search_url)
-                    continue
-
-                for item in bid_items[:20]:
-                    # Extract fields — try multiple attribute patterns
-                    title_el = (
-                        item.select_one(".bid-title") or
-                        item.select_one("h4") or
-                        item.select_one("h3") or
-                        item.select_one("td:nth-child(2)") or
-                        item.select_one("a")
-                    )
-                    if not title_el:
-                        continue
-
-                    title = title_el.get_text(strip=True)
-                    if not title or len(title) < 5:
-                        continue
-
-                    # Keyword relevance check
-                    if not any(kw.lower() in title.lower() for kw in INCLUDE_KEYWORDS):
-                        continue
-
-                    # Reference / Bid number
-                    ref_el = (
-                        item.select_one(".bid-no") or
-                        item.select_one("[class*='bid-number']") or
-                        item.select_one("td:nth-child(1)")
-                    )
-                    ref_no = ref_el.get_text(strip=True) if ref_el else ""
-
-                    if ref_no in seen_ids:
-                        continue
-                    seen_ids.add(ref_no or title[:30])
-
-                    # Deadline
-                    date_el = (
-                        item.select_one(".bid-end-date") or
-                        item.select_one("[class*='date']") or
-                        item.select_one("td:nth-child(4)")
-                    )
-                    raw_date  = date_el.get_text(strip=True) if date_el else ""
-                    deadline  = _parse_date(raw_date)
-
-                    # Link
-                    link_el    = item.select_one("a[href]")
-                    href       = link_el["href"] if link_el else ""
-                    detail_url = (
-                        f"https://bidplus.gem.gov.in{href}"
-                        if href.startswith("/") else href or search_url
-                    )
-
-                    record = _make_record(
-                        site_config=site_config,
-                        run_id=run_id,
-                        title=title,
-                        reference_number=ref_no or None,
-                        organization=None,
-                        deadline=deadline,
-                        estimated_value=None,
-                        location=None,
-                        document_urls=[detail_url],
-                        source_url=detail_url,
-                        keywords_matched=[keyword],
-                    )
-                    records.append(record)
-
-            except Exception as exc:
-                log.warning("gem.keyword_failed", keyword=keyword, error=str(exc))
-                continue
-
-    log.info("gem.done", count=len(records))
-    return records
+    await context.add_init_script("""
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-IN', 'en-GB', 'en'] });
+        window.chrome = window.chrome || { runtime: {}, loadTimes: () => {}, csi: () => {}, app: {} };
+    """)
+    return context
 
 
-# ─── eProcure / CPPP scraper (FIXED) ─────────────────────────
-def _scrape_eprocure(
-    site_config: SiteConfig,
-    run_id: Optional[str],
-) -> list[TenderRecord]:
-    """
-    eProcure central portal.
-    
-    Working approach:
-    1. Establish session by hitting the main page first (gets JSF cookies)
-    2. Hit the active tenders list endpoint with Referer header
-    3. Parse the HTML table — columns are fixed
-    4. Filter rows by our keywords
-    
-    Falls back gracefully if blocked.
-    """
-    from bs4 import BeautifulSoup
-    records: list[TenderRecord] = []
-
-    # Endpoints to try in order
-    endpoints = [
-        "https://eprocure.gov.in/eprocure/app?component=%24DirectLink&page=FrontEndLatestActiveTendersList&service=direct&session=T",
-        "https://eprocure.gov.in/eprocure/app",
-        "https://eprocure.gov.in/mmp/latestactivetenders",
-    ]
-
-    with httpx.Client(
-        timeout=25,
-        follow_redirects=True,
-        headers=_HEADERS,
-    ) as client:
-
-        # Warm up session
-        try:
-            client.get("https://eprocure.gov.in/", timeout=10)
-        except Exception:
-            pass
-
-        html = None
-        for endpoint in endpoints:
-            try:
-                resp = client.get(
-                    endpoint,
-                    headers={**_HEADERS, "Referer": "https://eprocure.gov.in/"},
-                    timeout=20,
-                )
-                if resp.status_code == 200 and len(resp.text) > 500:
-                    html = resp.text
-                    log.debug("eprocure.fetched", url=endpoint, chars=len(html))
-                    break
-                else:
-                    log.debug("eprocure.endpoint_failed",
-                              url=endpoint, status=resp.status_code)
-            except Exception as exc:
-                log.debug("eprocure.endpoint_error", url=endpoint, error=str(exc))
-                continue
-
-        if not html:
-            log.warning("eprocure.all_endpoints_failed")
-            return records
-
-        soup = BeautifulSoup(html, "lxml")
-
-        # Find the tender table — eProcure has a specific table structure
-        tables = soup.find_all("table")
-        tender_table = None
-        for t in tables:
-            headers = [th.get_text(strip=True).lower() for th in t.find_all("th")]
-            if any("tender" in h or "title" in h or "ref" in h for h in headers):
-                tender_table = t
-                break
-
-        if not tender_table:
-            # Try to find any table with enough columns
-            for t in tables:
-                rows = t.find_all("tr")
-                if len(rows) > 3:
-                    tender_table = t
-                    break
-
-        if not tender_table:
-            log.warning("eprocure.table_not_found")
-            return records
-
-        rows = tender_table.find_all("tr")[1:]  # skip header
-
-        for row in rows:
-            cells = [td.get_text(strip=True) for td in row.find_all("td")]
-            if len(cells) < 3:
-                continue
-
-            # Try to identify title column (longest text cell usually)
-            title = max(cells, key=len) if cells else ""
-            if not title or len(title) < 10:
-                continue
-
-            # Keyword filter
-            matched = [kw for kw in INCLUDE_KEYWORDS if kw.lower() in title.lower()]
-            if not matched:
-                continue
-
-            # Reference number (first cell is usually ref/serial)
-            ref_no = cells[0] if cells else None
-
-            # Deadline (look for date-like pattern in cells)
-            deadline = None
-            for cell in cells:
-                d = _parse_date(cell)
-                if d:
-                    deadline = d
-                    break
-
-            # Link
-            link_tag   = row.find("a", href=True)
-            href       = link_tag["href"] if link_tag else ""
-            detail_url = (
-                f"https://eprocure.gov.in{href}"
-                if href.startswith("/") else href or endpoints[0]
-            )
-
-            record = _make_record(
-                site_config=site_config,
-                run_id=run_id,
-                title=title,
-                reference_number=ref_no,
-                organization=cells[2] if len(cells) > 2 else None,
-                deadline=deadline,
-                estimated_value=None,
-                location=None,
-                document_urls=[detail_url],
-                source_url=detail_url,
-                keywords_matched=matched,
-            )
-            records.append(record)
-
-    log.info("eprocure.done", count=len(records))
-    return records
+async def _abort_asset(route) -> None:
+    await route.abort()
 
 
-def _parse_date(raw: str) -> Optional[str]:
-    """Try to parse any date string into YYYY-MM-DD."""
-    import re
-    raw = raw.strip()
+def _normalize_date(raw: str | None) -> Optional[str]:
     if not raw:
         return None
-    # Remove time portion
-    raw = re.sub(r'\s+\d{1,2}:\d{2}.*$', '', raw).strip()
-    formats = [
-        "%d-%b-%Y", "%d/%m/%Y", "%Y-%m-%d",
-        "%d-%m-%Y", "%d.%m.%Y", "%B %d, %Y",
-    ]
-    for fmt in formats:
+    raw = raw.strip()
+    if not raw or raw == "N/A":
+        return None
+
+    for fmt in ("%d-%b-%Y", "%d/%m/%Y", "%d-%m-%Y"):
         try:
-            from datetime import datetime as dt
-            return dt.strptime(raw[:12], fmt).strftime("%Y-%m-%d")
+            return datetime.strptime(raw[:11].strip(), fmt).strftime("%Y-%m-%d")
         except ValueError:
             continue
     return None
 
 
-# ─── Main entry point ─────────────────────────────────────────
-def scrape_type_c(
+def _safe_text(value: str | None) -> Optional[str]:
+    if not value:
+        return None
+    value = value.strip()
+    return value if value and value != "N/A" else None
+
+
+def _build_organization(department: str | None, organization: str | None) -> Optional[str]:
+    dept = _safe_text(department)
+    org = _safe_text(organization)
+    if dept and org:
+        return f"{dept} | {org}"
+    return dept or org
+
+
+async def _set_search_type(page: Page, search_type: str = "contains") -> None:
+    try:
+        dropdown = page.locator(".searchtype").first
+        if await dropdown.count() == 0:
+            return
+
+        await dropdown.click()
+        await _human_delay(250, 500)
+
+        if search_type.lower() == "exact":
+            await page.locator("xpath=//a[contains(normalize-space(.), 'Exact Search')]").first.click()
+        else:
+            await page.locator("xpath=//a[contains(normalize-space(.), 'Contains')]").first.click()
+
+        await _human_delay(250, 500)
+    except Exception as exc:
+        log.debug("type_c.search_type_failed", error=str(exc))
+
+
+async def _wait_for_results(page: Page, timeout_ms: int = 60000) -> bool:
+    try:
+        await page.wait_for_function(
+            """() => {
+                const cards = document.querySelectorAll('#bidCard .card');
+                const noRecords = document.body && document.body.innerText && document.body.innerText.includes('No records found');
+                return cards.length > 0 || noRecords;
+            }""",
+            timeout=timeout_ms,
+        )
+        return True
+    except Exception:
+        return False
+
+
+async def _scrape_current_page(page: Page) -> list[dict]:
+    bids_data: list[dict] = []
+
+    cards = page.locator("#bidCard .card")
+    card_count = await cards.count()
+    if card_count == 0:
+        return bids_data
+
+    for idx in range(card_count):
+        bid = cards.nth(idx)
+        data: dict[str, str] = {}
+
+        try:
+            links = bid.locator("a.bid_no_hover")
+            link_count = await links.count()
+            if link_count > 0:
+                first_link = links.nth(0)
+                data["bid_number"] = (await first_link.inner_text()).strip()
+                data["bid_url"] = await first_link.get_attribute("href") or ""
+                if link_count > 1:
+                    data["ra_number"] = (await links.nth(1).inner_text()).strip()
+                else:
+                    data["ra_number"] = "N/A"
+            else:
+                data["bid_number"] = "N/A"
+                data["ra_number"] = "N/A"
+                data["bid_url"] = ""
+        except Exception:
+            data["bid_number"] = "N/A"
+            data["ra_number"] = "N/A"
+            data["bid_url"] = ""
+
+        try:
+            item_anchor = bid.locator(".card-body .col-md-4 .row a").first
+            if await item_anchor.count() > 0:
+                data["items"] = (
+                    await item_anchor.get_attribute("data-content")
+                    or (await item_anchor.inner_text()).strip()
+                )
+            else:
+                data["items"] = "N/A"
+        except Exception:
+            data["items"] = "N/A"
+
+        try:
+            qty_rows = bid.locator(".card-body .col-md-4 .row")
+            if await qty_rows.count() > 1:
+                qty_text = (await qty_rows.nth(1).inner_text()).strip()
+                data["quantity"] = qty_text.replace("Quantity:", "").strip()
+            else:
+                data["quantity"] = "N/A"
+        except Exception:
+            data["quantity"] = "N/A"
+
+        try:
+            dept_rows = bid.locator(".card-body .col-md-5 .row")
+            if await dept_rows.count() > 1:
+                full_dept_text = (await dept_rows.nth(1).inner_text()).strip()
+                lines = [line.strip() for line in full_dept_text.split("\n") if line.strip()]
+                data["department"] = lines[0] if lines else full_dept_text
+                data["organization"] = lines[1] if len(lines) > 1 else "N/A"
+            else:
+                data["department"] = "N/A"
+                data["organization"] = "N/A"
+        except Exception:
+            data["department"] = "N/A"
+            data["organization"] = "N/A"
+
+        try:
+            data["start_date"] = (await bid.locator(".start_date").first.inner_text()).strip()
+        except Exception:
+            data["start_date"] = "N/A"
+
+        try:
+            data["end_date"] = (await bid.locator(".end_date").first.inner_text()).strip()
+        except Exception:
+            data["end_date"] = "N/A"
+
+        data["timestamp"] = datetime.now().isoformat()
+        bids_data.append(data)
+
+    return bids_data
+
+
+async def _has_next_page(page: Page) -> bool:
+    try:
+        next_btn = page.locator("xpath=//a[contains(normalize-space(.), 'Next')]").first
+        if await next_btn.count() == 0:
+            return False
+        return await next_btn.is_visible() and await next_btn.is_enabled()
+    except Exception:
+        return False
+
+
+async def _go_to_next_page(page: Page) -> bool:
+    try:
+        next_btn = page.locator("xpath=//a[contains(normalize-space(.), 'Next')]").first
+        if await next_btn.count() == 0:
+            return False
+
+        await next_btn.scroll_into_view_if_needed()
+        await _human_delay(200, 400)
+        await next_btn.click()
+        await _human_delay(1200, 1800)
+        return await _wait_for_results(page, timeout_ms=30000)
+    except Exception as exc:
+        log.debug("type_c.next_page_failed", error=str(exc))
+        return False
+
+
+def _make_record(
     site_config: SiteConfig,
-    llm: BaseLLMExtractor,
+    bid: dict,
+    keyword: str,
+    run_id: Optional[str],
+) -> TenderRecord:
+    source_url = bid.get("bid_url") or site_config.url
+    title = _safe_text(bid.get("items")) or _safe_text(bid.get("bid_number"))
+
+    return TenderRecord(
+        source_site=site_config.name,
+        source_url=source_url,
+        site_type=site_config.site_type.value,
+        run_id=run_id,
+        title=title,
+        reference_number=_safe_text(bid.get("bid_number")),
+        organization=_build_organization(bid.get("department"), bid.get("organization")),
+        deadline=_normalize_date(bid.get("end_date")),
+        estimated_value=None,
+        location=None,
+        document_urls=[source_url] if source_url else [],
+        keywords_matched=[keyword],
+        status=TenderStatus.PASS.value,
+    )
+
+
+async def _scrape_keyword(page: Page, site_config: SiteConfig, run_id: Optional[str], keyword: str) -> list[TenderRecord]:
+    all_records: list[TenderRecord] = []
+    seen_refs: set[str] = set()
+
+    try:
+        search_input = page.locator("#searchBid").first
+        await search_input.click(timeout=8_000)
+        await _human_delay(50, 100)
+        await search_input.fill("")
+        await search_input.type(keyword, delay=random.randint(25, 50))
+        await _human_delay(50, 120)
+
+        await page.locator("#searchBidRA").first.click(timeout=8_000)
+        await _human_delay(900, 1400)
+
+        await _wait_for_results(page, timeout_ms=60000)
+
+        while True:
+            bids = await _scrape_current_page(page)
+            for bid in bids:
+                key = _safe_text(bid.get("bid_number")) or _safe_text(bid.get("bid_url")) or ""
+                if not key or key in seen_refs:
+                    continue
+                seen_refs.add(key)
+                all_records.append(_make_record(site_config, bid, keyword, run_id))
+
+            if not await _has_next_page(page):
+                break
+
+            if not await _go_to_next_page(page):
+                break
+
+        return all_records
+    except Exception as exc:
+        log.warning("type_c.keyword_failed", site=site_config.name, keyword=keyword, error=str(exc))
+        return all_records
+
+
+async def scrape_type_c(
+    site_config: SiteConfig,
     run_id: Optional[str] = None,
 ) -> list[TenderRecord]:
-    name = site_config.name.lower()
-    if "gem" in name:
-        return _scrape_gem(site_config, run_id)
-    elif "eprocure" in name or "cppp" in name:
-        return _scrape_eprocure(site_config, run_id)
-    else:
-        log.warning("type_c.unknown_site", site=site_config.name)
+    """
+    Scrape GeM BidPlus and return TenderRecord rows.
+    """
+    if site_config.name != "GeM BidPlus":
+        log.info("type_c.unsupported_site", site=site_config.name, url=site_config.url)
         return []
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-web-security",
+                "--disable-features=IsolateOrigins,site-per-process",
+                "--allow-running-insecure-content",
+                "--disable-site-isolation-trials",
+                "--ignore-certificate-errors",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-infobars",
+                "--window-size=1920,1080",
+            ],
+        )
+
+        context = await _stealth_context(browser)
+        page = await context.new_page()
+        page.set_default_timeout(30_000)
+
+        try:
+            await page.route(
+                "**/*.{png,jpg,jpeg,gif,webp,svg,woff,woff2,ttf,eot,mp4,mp3,ico}",
+                _abort_asset,
+            )
+
+            await page.goto(site_config.url, wait_until="domcontentloaded")
+            await _human_delay(4_000, 5_000)
+            await _set_search_type(page, search_type="contains")
+
+            all_records: list[TenderRecord] = []
+            seen_keys: dict[str, TenderRecord] = {}
+
+            for keyword in INCLUDE_KEYWORDS:
+                records = await _scrape_keyword(page, site_config, run_id, keyword)
+                for record in records:
+                    key = record.reference_number or record.url_hash or record.source_url
+                    existing = seen_keys.get(key)
+                    if existing:
+                        for kw in record.keywords_matched:
+                            if kw not in existing.keywords_matched:
+                                existing.keywords_matched.append(kw)
+                    else:
+                        seen_keys[key] = record
+                        all_records.append(record)
+
+                log.info(
+                    "type_c.keyword_done",
+                    site=site_config.name,
+                    keyword=keyword,
+                    found=len(records),
+                    total_so_far=len(all_records),
+                )
+
+            log.info("type_c.done", site=site_config.name, records=len(all_records))
+            return all_records
+        finally:
+            await context.close()
+            await browser.close()

@@ -31,3 +31,4 @@ hashlib-additional==1.2
 # Rate limiting
 ratelimit==2.2.1
 structlog
+bs4

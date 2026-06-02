@@ -4,6 +4,9 @@ import { CheckCircle, XCircle, Clock, TrendingUp, Globe, FileText, Mail } from '
 import type { RunStatus } from '../types/tender'
 import TenderCard from '../components/tenders/TenderCard'
 
+
+const lufgaRegularStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 400 } as const;
+const lufgaSemiboldStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 600 } as const;
 function StatCard({ label, value, sub, icon: Icon, color }: {
   label: string; value: string | number; sub?: string; icon: any; color: string
 }) {
@@ -38,7 +41,7 @@ export default function DashboardPage() {
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-slate-900">Dashboard</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Government tender monitoring · updated daily</p>
+        <p className="text-sm text-slate-500 mt-0.5" >Absstem Tender Monitoring</p>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -88,7 +91,9 @@ export default function DashboardPage() {
 
         {/* Top keywords */}
         <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h2 className="text-sm font-semibold text-slate-700 mb-3">Top Keywords</h2>
+          <h2 className="text-sm font-semibold text-slate-700 mb-3" style={lufgaSemiboldStyle}>
+            Top Keywords
+          </h2>
           {!stats?.tenders_by_keyword?.length && <p className="text-sm text-slate-400">No data yet.</p>}
           <div className="space-y-2">
             {stats?.tenders_by_keyword?.slice(0, 6).map(({ keyword, count }: { keyword: string; count: number }) => (

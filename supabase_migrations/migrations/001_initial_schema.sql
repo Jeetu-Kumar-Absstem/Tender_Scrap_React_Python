@@ -93,6 +93,10 @@ create policy "service update tenders"
   on tenders for update
   using (true);
 
+create policy "service delete tenders"
+  on tenders for delete
+  using (true);
+
 -- ─── FUNCTION: dedup check ──────────────────────────────────
 -- Returns true if tender already exists (by ref_no OR url_hash)
 create or replace function tender_exists(

@@ -40,11 +40,13 @@ export default function DashboardPage() {
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">Dashboard</h1>
-        <p className="text-sm text-slate-500 mt-0.5" >Absstem Tender Monitoring</p>
+        <h1 className="text-xl font-semibold text-slate-900" style={lufgaSemiboldStyle}>Dashboard</h1>
+        <p className="text-sm text-slate-500 mt-0.5" style={lufgaRegularStyle}>
+          Absstem Tender Monitoring
+        </p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" style={lufgaRegularStyle}>
         <StatCard label="Total Tenders"     value={stats?.total_tenders ?? '—'} icon={FileText}   color="bg-blue-500" />
         <StatCard label="New Today"         value={stats?.new_today ?? '—'}      icon={TrendingUp} color="bg-emerald-500" />
         <StatCard label="Portals Monitored" value={stats?.sites_monitored ?? '—'} icon={Globe}     color="bg-violet-500" />
@@ -60,7 +62,7 @@ export default function DashboardPage() {
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Recent runs */}
         <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h2 className="text-sm font-semibold text-slate-700 mb-3">Recent Runs</h2>
+          <h2 className="text-sm font-semibold text-slate-700 mb-3" style={lufgaSemiboldStyle}>Recent Runs</h2>
           {!runs?.length && <p className="text-sm text-slate-400">No runs yet.</p>}
           <div className="space-y-2">
             {runs?.map(run => {
@@ -110,12 +112,16 @@ export default function DashboardPage() {
 
         {/* Top sites */}
         <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h2 className="text-sm font-semibold text-slate-700 mb-3">Top Sources</h2>
+          <h2 className="text-sm font-semibold text-slate-700 mb-3" style={lufgaSemiboldStyle}>
+            Top Sources
+          </h2>
           {!stats?.tenders_by_site?.length && <p className="text-sm text-slate-400">No data yet.</p>}
           <div className="space-y-2">
             {stats?.tenders_by_site?.slice(0, 6).map(({ site, count }: { site: string; count: number }) => (
               <div key={site} className="flex items-center justify-between py-1">
-                <span className="text-xs text-slate-600 truncate">{site}</span>
+                <span className="text-xs text-slate-600 truncate" style={lufgaRegularStyle}>
+                  {site}
+                </span>
                 <span className="text-xs font-medium text-slate-900 ml-2">{count}</span>
               </div>
             ))}

@@ -1,11 +1,13 @@
 // src/pages/TendersPage.tsx
-import { useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useTenders } from '../hooks/useTenders'
 import TenderCard from '../components/tenders/TenderCard'
 import { Search, SlidersHorizontal, X, Loader2 } from 'lucide-react'
 import type { TenderFilters, SiteType, UserStatus } from '../types/tender'
 import { useInView } from '../hooks/useInView'
 
+const lufgaRegularStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 400 } as const;
+const lufgaSemiboldStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 600 } as const;
 const KEYWORDS = [
   'psa plant',
   'psa oxygen plant',
@@ -53,10 +55,18 @@ export default function TendersPage() {
   const [filters, setFilters] = useState<TenderFilters>({ user_status: 'all' })
   const [showFilters, setShowFilters] = useState(false)
   const [search, setSearch] = useState('')
+  const [selectedKeywords, setSelectedKeywords] = useState<string[]>([])
+  const [showKeywordDropdown, setShowKeywordDropdown] = useState(false)
+  const [keywordQuery, setKeywordQuery] = useState('')
+  const keywordFilterRef = useRef<HTMLDivElement | null>(null)
 
   const { data, isLoading, isFetchingNextPage, fetchNextPage, hasNextPage } = useTenders(filters)
   const allTenders = data?.pages.flatMap(p => p.tenders) ?? []
   const total = data?.pages[0]?.total ?? 0
+  const visibleTenders = selectedKeywords.length
+    ? allTenders.filter(t => selectedKeywords.every(keyword => t.keywords_matched?.includes(keyword)))
+    : allTenders
+  const displayedCount = selectedKeywords.length ? visibleTenders.length : total
 
   const sentinelRef = useInView(() => {
     if (hasNextPage && !isFetchingNextPage) fetchNextPage()
@@ -70,12 +80,44 @@ export default function TendersPage() {
     v !== undefined && !(k === 'user_status' && v === 'all')
   )
 
+  const filteredKeywords = KEYWORDS.filter(keyword =>
+    keyword.toLowerCase().includes(keywordQuery.trim().toLowerCase())
+  )
+
+  const toggleKeyword = (keyword: string) => {
+    setSelectedKeywords(prev =>
+      prev.includes(keyword)
+        ? prev.filter(item => item !== keyword)
+        : [...prev, keyword]
+    )
+  }
+
+  const clearAll = () => {
+    setFilters({ user_status: 'all' })
+    setSearch('')
+    setSelectedKeywords([])
+    setKeywordQuery('')
+    setShowKeywordDropdown(false)
+  }
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!keywordFilterRef.current) return
+      if (!keywordFilterRef.current.contains(event.target as Node)) {
+        setShowKeywordDropdown(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Tenders</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{total.toLocaleString()} results</p>
+          <p className="text-sm text-slate-500 mt-0.5">{displayedCount.toLocaleString()} results</p>
         </div>
         <button
           onClick={() => setShowFilters(v => !v)}
@@ -83,8 +125,10 @@ export default function TendersPage() {
         >
           <SlidersHorizontal size={13} />
           Filters
-          {activeFilters.length > 0 && (
-            <span className="bg-blue-600 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">{activeFilters.length}</span>
+          {(activeFilters.length + selectedKeywords.length) > 0 && (
+            <span className="bg-blue-600 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
+              {activeFilters.length + selectedKeywords.length}
+            </span>
           )}
         </button>
       </div>
@@ -104,7 +148,7 @@ export default function TendersPage() {
       </div>
 
       {showFilters && (
-        <div className="bg-white border border-slate-200 rounded-xl p-4 grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 grid grid-cols-1 md:grid-cols-5 gap-3">
           <div>
             <label className="text-xs font-medium text-slate-500 block mb-1">Site Type</label>
             <select value={filters.site_type ?? ''} onChange={e => setFilters(f => ({ ...f, site_type: e.target.value as SiteType || undefined }))}
@@ -112,16 +156,68 @@ export default function TendersPage() {
               <option value="">All types</option>
               <option value="A">Type A — Static</option>
               <option value="B">Type B — JS</option>
-              <option value="C">Type C — API</option>
+              <option value="C">Type C — JS</option>
             </select>
           </div>
-          <div>
+          <div className="relative" ref={keywordFilterRef}>
             <label className="text-xs font-medium text-slate-500 block mb-1">Keyword</label>
-            <select value={filters.keyword ?? ''} onChange={e => setFilters(f => ({ ...f, keyword: e.target.value || undefined }))}
-              className="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none">
-              <option value="">All</option>
-              {KEYWORDS.map(k => <option key={k} value={k}>{k}</option>)}
-            </select>
+            <button
+              type="button"
+              onClick={() => setShowKeywordDropdown(v => !v)}
+              className="w-full flex items-center justify-between gap-2 text-sm border border-slate-200 rounded-lg px-2.5 py-2 bg-white focus:outline-none hover:border-slate-300"
+            >
+              <span className={selectedKeywords.length === 0 ? 'text-slate-400' : 'text-slate-700'}>
+                {selectedKeywords.length === 0
+                  ? 'No Filter'
+                  : `${selectedKeywords.length} keyword${selectedKeywords.length > 1 ? 's' : ''} selected`}
+              </span>
+              <span className="text-slate-400">▾</span>
+            </button>
+
+            {showKeywordDropdown && (
+              <div className="absolute left-0 right-0 z-20 mt-1 rounded-lg border border-slate-200 bg-white shadow-lg">
+                <div className="p-3 border-b border-slate-100">
+                  <input
+                    type="text"
+                    value={keywordQuery}
+                    onChange={e => setKeywordQuery(e.target.value)}
+                    placeholder="Search keywords..."
+                    className="w-full text-sm border border-slate-200 rounded-md px-2 py-1.5 bg-white focus:outline-none focus:border-blue-400"
+                  />
+                </div>
+                <div className="max-h-56 overflow-auto px-3 py-2 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedKeywords([])
+                      setKeywordQuery('')
+                      setShowKeywordDropdown(false)
+                    }}
+                    className="w-full text-left text-sm text-slate-600 hover:text-slate-900 px-2 py-1 rounded hover:bg-slate-50"
+                  >
+                    No Filter
+                  </button>
+                  {filteredKeywords.length === 0 ? (
+                    <div className="text-xs text-slate-400 px-2 py-2">No keywords found.</div>
+                  ) : (
+                    filteredKeywords.map(keyword => (
+                      <label key={keyword} className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer px-2 py-1 rounded hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          checked={selectedKeywords.includes(keyword)}
+                          onChange={() => {
+                            toggleKeyword(keyword)
+                            setShowKeywordDropdown(false)
+                          }}
+                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="leading-5">{keyword}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
           <div>
             <label className="text-xs font-medium text-slate-500 block mb-1">Deadline from</label>
@@ -151,7 +247,7 @@ export default function TendersPage() {
         </div>
       )}
 
-      {activeFilters.length > 0 && (
+      {(activeFilters.length > 0 || selectedKeywords.length > 0) && (
         <div className="flex flex-wrap gap-2">
           {activeFilters.map(([key, val]) => (
             <span key={key} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-full">
@@ -164,7 +260,15 @@ export default function TendersPage() {
               })}><X size={10} /></button>
             </span>
           ))}
-          <button onClick={() => { setFilters({ user_status: 'all' }); setSearch('') }} className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1">Clear all</button>
+          {selectedKeywords.map(keyword => (
+            <span key={keyword} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-full">
+              keyword: {keyword}
+              <button onClick={() => setSelectedKeywords(prev => prev.filter(item => item !== keyword))}>
+                <X size={10} />
+              </button>
+            </span>
+          ))}
+          <button onClick={clearAll} className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1">Clear all</button>
         </div>
       )}
 
@@ -173,11 +277,11 @@ export default function TendersPage() {
           <Loader2 size={20} className="animate-spin text-blue-500" />
           <span className="ml-2 text-sm text-slate-500">Loading tenders...</span>
         </div>
-      ) : allTenders.length === 0 ? (
+      ) : visibleTenders.length === 0 ? (
         <div className="text-center py-16"><p className="text-slate-400 text-sm">No tenders found.</p></div>
       ) : (
         <div className="space-y-3">
-          {allTenders.map(t => <TenderCard key={t.id} tender={t} />)}
+          {visibleTenders.map(t => <TenderCard key={t.id} tender={t} />)}
           <div ref={sentinelRef} className="py-4 flex justify-center">
             {isFetchingNextPage && <Loader2 size={16} className="animate-spin text-blue-400" />}
           </div>

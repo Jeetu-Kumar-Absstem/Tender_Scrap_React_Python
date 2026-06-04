@@ -6,8 +6,6 @@ import { Search, SlidersHorizontal, X, Loader2 } from 'lucide-react'
 import type { TenderFilters, SiteType, UserStatus } from '../types/tender'
 import { useInView } from '../hooks/useInView'
 
-const lufgaRegularStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 400 } as const;
-const lufgaSemiboldStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 600 } as const;
 const KEYWORDS = [
   'psa plant',
   'psa oxygen plant',

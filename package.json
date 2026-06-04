@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "server": "dotenv -e .env -- tsx server/index.ts",
+    "server": "tsx server/index.ts",
     "dev:all": "concurrently \"npm run dev\" \"npm run server\""
   },
   "dependencies": {

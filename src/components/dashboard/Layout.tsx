@@ -270,7 +270,7 @@ export default function Layout() {
                 <div className="mt-1.5 pt-1.5 border-t border-amber-200">
                   <p className="text-[9px] text-amber-600 flex items-center gap-1">
                     <span>💡</span>
-                    <span>Once per site session — works after restart</span>
+                    <span>Once per site session of 3-4 minutes  — works after this</span>
                   </p>
                 </div>
               </div>

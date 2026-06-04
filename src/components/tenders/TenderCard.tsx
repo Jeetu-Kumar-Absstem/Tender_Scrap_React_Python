@@ -1,7 +1,7 @@
 // src/components/tenders/TenderCard.tsx
 import { useState, useRef, useEffect } from 'react'
 import { ExternalLink, Calendar, MapPin, Building2, Tag, FileDown, MoreVertical, CheckCircle2, Star, Trash2, AlertTriangle, X } from 'lucide-react'
-import { format, parseISO, isPast } from 'date-fns'
+import { format, parseISO, isAfter, startOfDay } from 'date-fns'
 import type { Tender } from '../../types/tender'
 import { clsx } from 'clsx'
 import { useTenderActions } from '../../hooks/useTenderActions'
@@ -146,9 +146,24 @@ export default function TenderCard({ tender }: Props) {
   const [menuOpen, setMenuOpen]     = useState(false)
   const [showDelete, setShowDelete] = useState(false)
   const { deleteTender }            = useTenderActions()
-  const deadlinePast                = tender.deadline ? isPast(parseISO(tender.deadline)) : false
-  const isDone                      = tender.user_status === 'done'
-  const isStarred                   = tender.user_status === 'starred'
+
+  // Expired = deadline day is strictly before today; deadline on today is still active
+  const deadlinePast = tender.deadline
+    ? isAfter(startOfDay(new Date()), startOfDay(parseISO(tender.deadline)))
+    : false
+
+  const isDone    = tender.user_status === 'done'
+  const isStarred = tender.user_status === 'starred'
+
+  // Auto-delete from DB and hide expired tenders immediately
+  useEffect(() => {
+    if (deadlinePast) {
+      deleteTender.mutate(tender.id)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deadlinePast, tender.id])
+
+  if (deadlinePast) return null
 
   const handleConfirmDelete = () => {
     deleteTender.mutate(tender.id, {

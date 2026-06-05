@@ -1,12 +1,4 @@
 // server/index.ts
-// ─────────────────────────────────────────────────────────────
-// Express server that replaces FastAPI.
-// Triggers python -m scraper.pipeline as a child process.
-// Runs in the same Node.js ecosystem as your React/TS app.
-//
-// Start:  npm run server
-// ─────────────────────────────────────────────────────────────
-
 import express, { Request, Response } from 'express'
 import cors from 'cors'
 import { spawn, ChildProcess } from 'child_process'
@@ -14,33 +6,19 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const ROOT_DIR  = path.resolve(__dirname, '..')   // tenderpulse/
+const ROOT_DIR  = path.resolve(__dirname, '..')
 
 const app  = express()
 const PORT = process.env.PORT ?? 8000
 
-// ─── CORS — allow dev & production origins ────────────────────
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'http://localhost:5175',
-  'http://localhost:4173',
-  'https://tender-scrap-react-python.vercel.app',
-  'https://tender-scrap-react-python-6yyo08j7l.vercel.app', // ✅ actual deployment URL
-  process.env.FRONTEND_URL,                                  // ✅ set this on Render for future-proofing
-].filter(Boolean) as string[]
-
+// ─── CORS — allow all origins (safe for this app, no auth cookies) ────────────
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (e.g. curl, Render health checks)
-    if (!origin) return callback(null, true)
-    if (allowedOrigins.includes(origin)) return callback(null, true)
-    callback(new Error(`CORS: origin ${origin} not allowed`))
-  },
-  credentials: true,
+  origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type'],
 }))
+
+app.options('*', cors()) // handle preflight for all routes
 
 app.use(express.json())
 
@@ -67,17 +45,14 @@ let activeProcess: ChildProcess | null = null
 
 // ─── Routes ──────────────────────────────────────────────────
 
-// Health check
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
-// Get current pipeline status
 app.get('/api/status', (_req: Request, res: Response) => {
   res.json(state)
 })
 
-// Trigger pipeline
 app.post('/api/run', (_req: Request, res: Response) => {
   if (state.running) {
     res.status(409).json({ detail: 'Pipeline already running' })
@@ -88,16 +63,14 @@ app.post('/api/run', (_req: Request, res: Response) => {
   state.started_at = new Date().toISOString()
   state.last_result = null
 
-  // Detect Python executable (venv or system)
-  const isWindows = process.platform === 'win32'
+  const isWindows  = process.platform === 'win32'
   const venvPython = isWindows
     ? path.join(ROOT_DIR, 'venv', 'Scripts', 'python.exe')
     : path.join(ROOT_DIR, 'venv', 'bin', 'python')
 
-  // Use venv python if it exists, otherwise fall back to system python
   const pythonExe = (() => {
     try {
-      const fs = require('fs')    // eslint-disable-line @typescript-eslint/no-require-imports
+      const fs = require('fs')
       return fs.existsSync(venvPython) ? venvPython : (isWindows ? 'python' : 'python3')
     } catch {
       return isWindows ? 'python' : 'python3'
@@ -107,18 +80,16 @@ app.post('/api/run', (_req: Request, res: Response) => {
   console.log(`[server] Starting pipeline with: ${pythonExe}`)
   console.log(`[server] Working dir: ${ROOT_DIR}`)
 
-  // Spawn pipeline as child process
   activeProcess = spawn(
     pythonExe,
     ['-m', 'scraper.pipeline'],
     {
-      cwd:   ROOT_DIR,      // must run from project root
-      env:   process.env,   // inherits .env loaded by dotenv
+      cwd:   ROOT_DIR,
+      env:   process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
     }
   )
 
-  // Stream pipeline logs to server console
   activeProcess.stdout?.on('data', (chunk: Buffer) => {
     process.stdout.write(`[pipeline] ${chunk.toString()}`)
   })
@@ -126,7 +97,6 @@ app.post('/api/run', (_req: Request, res: Response) => {
     process.stderr.write(`[pipeline:err] ${chunk.toString()}`)
   })
 
-  // On finish — update state
   activeProcess.on('close', (code: number | null) => {
     const success = code === 0
     console.log(`[server] Pipeline finished. Exit code: ${code}`)
@@ -153,7 +123,6 @@ app.post('/api/run', (_req: Request, res: Response) => {
     activeProcess = null
   })
 
-  // Respond immediately — pipeline runs in background
   res.json({
     message:    'Pipeline started',
     started_at: state.started_at,
@@ -161,7 +130,6 @@ app.post('/api/run', (_req: Request, res: Response) => {
   })
 })
 
-// Kill running pipeline (emergency stop)
 app.post('/api/stop', (_req: Request, res: Response) => {
   if (!state.running || !activeProcess) {
     res.status(400).json({ detail: 'No pipeline running' })
@@ -178,7 +146,6 @@ app.post('/api/stop', (_req: Request, res: Response) => {
   res.json({ message: 'Pipeline interrupted' })
 })
 
-// ─── Start ───────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`✅ TenderPulse server running at http://localhost:${PORT}`)
   console.log(`   POST /api/run    → trigger pipeline`)

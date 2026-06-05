@@ -28,3 +28,12 @@ export async function getPipelineStatus(): Promise<PipelineStatus> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return res.json()
 }
+
+export async function stopPipeline(): Promise<{ message: string }> {
+  const res = await fetch(`${API_BASE}/api/stop`, { method: 'POST' })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail ?? `HTTP ${res.status}`)
+  }
+  return res.json()
+}

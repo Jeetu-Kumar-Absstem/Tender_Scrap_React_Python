@@ -1,6 +1,6 @@
 // src/components/dashboard/Layout.tsx
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, FileSearch, Activity, Play, Loader2, CheckCircle2, AlertCircle, X, ChevronUp, AlertTriangle } from 'lucide-react'
+import { LayoutDashboard, FileSearch, Activity, Play, Loader2, CheckCircle2, AlertCircle, X, ChevronUp, AlertTriangle, Square } from 'lucide-react'
 import { usePipeline } from '../../hooks/usePipeline'
 import { clsx } from 'clsx'
 import { useState, useEffect } from 'react'
@@ -14,7 +14,7 @@ const nav = [
 ]
 
 export default function Layout() {
-  const { isRunning, loading, error, status, trigger } = usePipeline()
+  const { isRunning, loading, error, status, trigger, stop } = usePipeline()
   const [isDisclaimerMinimized, setIsDisclaimerMinimized] = useState(false)
   const [isDisclaimerVisible, setIsDisclaimerVisible] = useState(true)
 
@@ -51,6 +51,7 @@ export default function Layout() {
           <button
             onClick={trigger}
             disabled={isRunning || loading}
+            title="Execution may take time"
             className={clsx(
               'w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
               isRunning || loading
@@ -63,6 +64,16 @@ export default function Layout() {
               : <><Play size={13} /> Start Execution</>
             }
           </button>
+
+          {isRunning && (
+            <button
+              onClick={stop}
+              className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-100 transition-colors"
+            >
+              <Square size={13} fill="currentColor" className="text-red-600" />
+              Stop Execution
+            </button>
+          )}
 
           {/* Last run result */}
           {status?.last_result && (
@@ -145,6 +156,7 @@ export default function Layout() {
           <button
             onClick={trigger}
             disabled={isRunning || loading}
+            title="Execution may take time"
             className={clsx(
               'w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
               isRunning || loading
@@ -157,6 +169,16 @@ export default function Layout() {
               : <><Play size={13} /> Start Execution</>
             }
           </button>
+
+          {isRunning && (
+            <button
+              onClick={stop}
+              className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-100 transition-colors"
+            >
+              <Square size={13} fill="currentColor" className="text-red-600" />
+              Stop Execution
+            </button>
+          )}
 
           {/* Last run result */}
           {status?.last_result && (

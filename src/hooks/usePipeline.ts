@@ -1,6 +1,6 @@
 // src/hooks/usePipeline.ts
 import { useState, useEffect, useCallback } from 'react'
-import { triggerPipeline, getPipelineStatus, type PipelineStatus } from '../lib/pipelineApi'
+import { triggerPipeline, getPipelineStatus, stopPipeline, type PipelineStatus } from '../lib/pipelineApi'
 
 export function usePipeline() {
   const [status, setStatus]   = useState<PipelineStatus | null>(null)
@@ -37,11 +37,22 @@ export function usePipeline() {
     }
   }, [fetchStatus])
 
+  const stop = useCallback(async () => {
+    setError(null)
+    try {
+      await stopPipeline()
+      await fetchStatus()
+    } catch (e: any) {
+      setError(e.message)
+    }
+  }, [fetchStatus])
+
   return {
     status,
     error,
     loading,
     isRunning: status?.running ?? false,
     trigger,
+    stop,
   }
 }

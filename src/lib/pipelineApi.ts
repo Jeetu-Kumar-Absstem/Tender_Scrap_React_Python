@@ -10,6 +10,7 @@ export interface PipelineStatus {
     exit_code: number
     finished_at: string
     success: boolean
+    status?: 'completed' | 'failed' | 'interrupted'
     error?: string
   } | null
 }

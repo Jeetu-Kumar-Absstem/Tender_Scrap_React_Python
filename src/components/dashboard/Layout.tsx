@@ -19,6 +19,17 @@ export default function Layout() {
   const [isDisclaimerVisible, setIsDisclaimerVisible] = useState(true)
 
   const lastSuccess = status?.last_result?.success
+  const runStatus = status?.last_result?.status
+
+  // Determine status message and color
+  const getStatusDisplay = () => {
+    if (runStatus === 'interrupted') {
+      return { label: 'Last run interrupted', icon: 'alert', color: 'text-amber-600' }
+    }
+    return { label: lastSuccess ? 'Last run succeeded' : 'Last run failed', icon: lastSuccess ? 'check' : 'alert', color: lastSuccess ? 'text-emerald-600' : 'text-red-500' }
+  }
+
+  const statusDisplay = getStatusDisplay()
 
   // Load saved preference
   useEffect(() => {
@@ -79,13 +90,12 @@ export default function Layout() {
           {status?.last_result && (
             <div className={clsx(
               'flex items-center gap-1.5 mt-2 px-1 text-[11px]',
-              lastSuccess ? 'text-emerald-600' : 'text-red-500'
+              statusDisplay.color
             )}>
-              {lastSuccess
-                ? <CheckCircle2 size={10} />
-                : <AlertCircle size={10} />
-              }
-              {lastSuccess ? 'Last run succeeded' : 'Last run failed'}
+              {statusDisplay.icon === 'check' && <CheckCircle2 size={10} />}
+              {statusDisplay.icon === 'alert' && runStatus === 'interrupted' && <AlertTriangle size={10} />}
+              {statusDisplay.icon === 'alert' && runStatus !== 'interrupted' && <AlertCircle size={10} />}
+              {statusDisplay.label}
             </div>
           )}
 
@@ -184,13 +194,12 @@ export default function Layout() {
           {status?.last_result && (
             <div className={clsx(
               'flex items-center gap-1.5 mt-2 px-1 text-[11px]',
-              lastSuccess ? 'text-emerald-600' : 'text-red-500'
+              statusDisplay.color
             )}>
-              {lastSuccess
-                ? <CheckCircle2 size={10} />
-                : <AlertCircle size={10} />
-              }
-              {lastSuccess ? 'Last run succeeded' : 'Last run failed'}
+              {statusDisplay.icon === 'check' && <CheckCircle2 size={10} />}
+              {statusDisplay.icon === 'alert' && runStatus === 'interrupted' && <AlertTriangle size={10} />}
+              {statusDisplay.icon === 'alert' && runStatus !== 'interrupted' && <AlertCircle size={10} />}
+              {statusDisplay.label}
             </div>
           )}
 

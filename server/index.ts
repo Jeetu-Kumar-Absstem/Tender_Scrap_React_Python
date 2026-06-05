@@ -45,6 +45,7 @@ interface RunState {
     success:     boolean
     finished_at: string
     exit_code:   number
+    status:      'completed' | 'failed' | 'interrupted'
     error?:      string
   } | null
 }
@@ -127,6 +128,7 @@ app.post('/api/run', (_req: Request, res: Response) => {
       success,
       exit_code:   code ?? -1,
       finished_at: new Date().toISOString(),
+      status:      success ? 'completed' : 'failed',
     }
     activeProcess = null
   })
@@ -138,6 +140,7 @@ app.post('/api/run', (_req: Request, res: Response) => {
       success:     false,
       exit_code:   -1,
       finished_at: new Date().toISOString(),
+      status:      'failed',
       error:       err.message,
     }
     activeProcess = null
@@ -159,7 +162,13 @@ app.post('/api/stop', (_req: Request, res: Response) => {
   }
   activeProcess.kill('SIGTERM')
   state.running = false
-  res.json({ message: 'Pipeline stopped' })
+  state.last_result = {
+    success:     false,
+    exit_code:   -1,
+    finished_at: new Date().toISOString(),
+    status:      'interrupted',
+  }
+  res.json({ message: 'Pipeline interrupted' })
 })
 
 // ─── Start ───────────────────────────────────────────────────

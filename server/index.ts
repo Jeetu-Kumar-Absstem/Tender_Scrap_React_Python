@@ -4,6 +4,7 @@ import cors from 'cors'
 import { spawn, ChildProcess } from 'child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import fs from 'fs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR  = path.resolve(__dirname, '..')
@@ -19,9 +20,43 @@ const corsOptions = {
 }
 
 app.use(cors(corsOptions))
-app.options(/.*/, cors(corsOptions)) // ✅ regex instead of '*' — works with Express 5 / path-to-regexp v8
+app.options(/.*/, cors(corsOptions))
 
 app.use(express.json())
+
+// ─── Resolve Python executable ───────────────────────────────
+// Priority: venv (has all pip packages) → system python3 → python
+function resolvePython(): string {
+  const isWindows = process.platform === 'win32'
+
+  const candidates = isWindows
+    ? [
+        path.join(ROOT_DIR, 'venv', 'Scripts', 'python.exe'),
+        path.join(ROOT_DIR, '.venv', 'Scripts', 'python.exe'),
+        'python',
+      ]
+    : [
+        path.join(ROOT_DIR, 'venv', 'bin', 'python'),
+        path.join(ROOT_DIR, '.venv', 'bin', 'python'),
+        '/opt/render/project/src/venv/bin/python',  // Render venv path
+        'python3',
+        'python',
+      ]
+
+  for (const candidate of candidates) {
+    if (candidate.startsWith('/') || candidate.includes('\\')) {
+      if (fs.existsSync(candidate)) {
+        console.log(`[server] Using python: ${candidate}`)
+        return candidate
+      }
+    } else {
+      return candidate // system command, trust it exists
+    }
+  }
+  return 'python3'
+}
+
+const PYTHON_EXE = resolvePython()
 
 // ─── Run state (in-memory) ───────────────────────────────────
 interface RunState {
@@ -47,7 +82,7 @@ let activeProcess: ChildProcess | null = null
 // ─── Routes ──────────────────────────────────────────────────
 
 app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), python: PYTHON_EXE })
 })
 
 app.get('/api/status', (_req: Request, res: Response) => {
@@ -64,25 +99,11 @@ app.post('/api/run', (_req: Request, res: Response) => {
   state.started_at = new Date().toISOString()
   state.last_result = null
 
-  const isWindows  = process.platform === 'win32'
-  const venvPython = isWindows
-    ? path.join(ROOT_DIR, 'venv', 'Scripts', 'python.exe')
-    : path.join(ROOT_DIR, 'venv', 'bin', 'python')
-
-  const pythonExe = (() => {
-    try {
-      const fs = require('fs')
-      return fs.existsSync(venvPython) ? venvPython : (isWindows ? 'python' : 'python3')
-    } catch {
-      return isWindows ? 'python' : 'python3'
-    }
-  })()
-
-  console.log(`[server] Starting pipeline with: ${pythonExe}`)
+  console.log(`[server] Starting pipeline with: ${PYTHON_EXE}`)
   console.log(`[server] Working dir: ${ROOT_DIR}`)
 
   activeProcess = spawn(
-    pythonExe,
+    PYTHON_EXE,
     ['-m', 'scraper.pipeline'],
     {
       cwd:   ROOT_DIR,
@@ -127,7 +148,7 @@ app.post('/api/run', (_req: Request, res: Response) => {
   res.json({
     message:    'Pipeline started',
     started_at: state.started_at,
-    python:     pythonExe,
+    python:     PYTHON_EXE,
   })
 })
 
@@ -149,6 +170,7 @@ app.post('/api/stop', (_req: Request, res: Response) => {
 
 app.listen(PORT, () => {
   console.log(`✅ TenderPulse server running at http://localhost:${PORT}`)
+  console.log(`   Python: ${PYTHON_EXE}`)
   console.log(`   POST /api/run    → trigger pipeline`)
   console.log(`   GET  /api/status → check status`)
   console.log(`   GET  /health     → health check`)

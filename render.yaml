@@ -6,7 +6,8 @@ services:
     plan: standard
     buildCommand: |
       npm install
-      pip install -r scraper/requirements.txt
+      pip install -r requirements.txt
+      playwright install chromium
     startCommand: npm run server
     envVars:
       - key: PORT
@@ -34,9 +35,3 @@ services:
       - key: VITE_API_URL
         value: https://tender-scrap-react-python.onrender.com
     autoDeploy: true
-
-databases:
-  # Optional: if you want to use Render's PostgreSQL
-  # - name: tenderpulse-db
-  #   databaseName: tenderpulse
-  #   plan: standard

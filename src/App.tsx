@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/dashboard/Layout'
 import DashboardPage from './pages/DashboardPage'
 import TendersPage from './pages/TendersPage'
+import Login from './pages/Login'
+import { useAuth } from './hooks/useAuth'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -10,17 +12,28 @@ const queryClient = new QueryClient({
   },
 })
 
+function AuthGate() {
+  const { user, loading } = useAuth()
+
+  if (loading) return <div style={{ background: '#020810', height: '100vh' }} />
+  if (!user) return <Login />
+
+  return (
+    <Routes>
+      <Route element={<Layout />}>
+        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/tenders"   element={<TendersPage />} />
+      </Route>
+    </Routes>
+  )
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/tenders"   element={<TendersPage />} />
-          </Route>
-        </Routes>
+        <AuthGate />
       </BrowserRouter>
     </QueryClientProvider>
   )

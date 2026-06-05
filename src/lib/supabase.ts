@@ -31,5 +31,5 @@ export interface Database {
 }
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
-  auth: { persistSession: false },   // no auth per spec
+  auth: { persistSession: true },   
 })

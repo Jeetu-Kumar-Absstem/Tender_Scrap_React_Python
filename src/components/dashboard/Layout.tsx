@@ -1,8 +1,9 @@
 // src/components/dashboard/Layout.tsx
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, FileSearch, Activity, Play, Loader2, CheckCircle2, AlertCircle, X, ChevronUp, AlertTriangle, Square, Terminal, ChevronDown, Trash2 } from 'lucide-react'
+import { LayoutDashboard, FileSearch, Activity, Play, Loader2, CheckCircle2, AlertCircle, X, ChevronUp, AlertTriangle, Square, Terminal, ChevronDown, Trash2, LogOut } from 'lucide-react'
 import { usePipeline } from '../../hooks/usePipeline'
 import { useLogs } from '../../hooks/useLogs'
+import { supabase } from '../../lib/supabase'
 import { clsx } from 'clsx'
 import { useState, useEffect, useRef } from 'react'
 
@@ -19,7 +20,6 @@ function LogPanel({ onClose }: { onClose: () => void }) {
   const { logs, clear } = useLogs(true)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // auto-scroll to bottom on new logs
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
@@ -35,7 +35,6 @@ function LogPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="flex flex-col border-t border-slate-700" style={{ height: 280 }}>
-      {/* Terminal header */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-slate-800 border-b border-slate-700 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Terminal size={11} className="text-emerald-400" />
@@ -45,38 +44,23 @@ function LogPanel({ onClose }: { onClose: () => void }) {
           )}
         </div>
         <div className="flex items-center gap-1">
-          <button
-            onClick={clear}
-            title="Clear logs"
-            className="p-1 rounded hover:bg-slate-700 transition-colors"
-          >
+          <button onClick={clear} title="Clear logs" className="p-1 rounded hover:bg-slate-700 transition-colors">
             <Trash2 size={10} className="text-slate-400 hover:text-slate-200" />
           </button>
-          <button
-            onClick={onClose}
-            title="Hide logs"
-            className="p-1 rounded hover:bg-slate-700 transition-colors"
-          >
+          <button onClick={onClose} title="Hide logs" className="p-1 rounded hover:bg-slate-700 transition-colors">
             <ChevronDown size={10} className="text-slate-400 hover:text-slate-200" />
           </button>
         </div>
       </div>
 
-      {/* Log lines */}
       <div className="flex-1 overflow-y-auto bg-slate-900 px-2 py-1.5 font-mono">
         {logs.length === 0 ? (
-          <p className="text-[10px] text-slate-600 italic px-1 pt-1">
-            Waiting for pipeline output...
-          </p>
+          <p className="text-[10px] text-slate-600 italic px-1 pt-1">Waiting for pipeline output...</p>
         ) : (
           logs.map((line, i) => (
             <div key={i} className="flex gap-2 leading-relaxed">
-              <span className="text-[9px] text-slate-600 flex-shrink-0 pt-px">
-                {formatTs(line.ts)}
-              </span>
-              <span className={clsx('text-[10px] break-all whitespace-pre-wrap', lineColor(line.type))}>
-                {line.text}
-              </span>
+              <span className="text-[9px] text-slate-600 flex-shrink-0 pt-px">{formatTs(line.ts)}</span>
+              <span className={clsx('text-[10px] break-all whitespace-pre-wrap', lineColor(line.type))}>{line.text}</span>
             </div>
           ))
         )}
@@ -86,7 +70,7 @@ function LogPanel({ onClose }: { onClose: () => void }) {
   )
 }
 
-// ─── Sidebar inner content (shared between both render paths) ─
+// ─── Sidebar inner content ────────────────────────────────────
 function SidebarContent({
   isRunning, loading, error, status, trigger, stop,
   isDisclaimerMinimized, setIsDisclaimerMinimized,
@@ -94,8 +78,8 @@ function SidebarContent({
   showDisclaimer,
   logsOpen, setLogsOpen,
 }: any) {
-  const lastSuccess  = status?.last_result?.success
-  const runStatus    = status?.last_result?.status
+  const lastSuccess = status?.last_result?.success
+  const runStatus   = status?.last_result?.status
 
   const getStatusDisplay = () => {
     if (runStatus === 'interrupted') return { label: 'Last run interrupted', icon: 'alert', color: 'text-amber-600' }
@@ -186,7 +170,6 @@ function SidebarContent({
 
       {/* Bottom section */}
       <div className="mt-auto">
-        {/* Disclaimer card */}
         {isDisclaimerVisible && (
           <div className="p-3 border-t border-slate-100" style={lufgaRegularStyle}>
             {isDisclaimerMinimized ? (
@@ -246,7 +229,6 @@ function SidebarContent({
           </div>
         )}
 
-        {/* Show Disclaimer restore button */}
         {!isDisclaimerVisible && (
           <div className="px-3 pt-2 border-t border-slate-100">
             <button
@@ -272,9 +254,7 @@ function SidebarContent({
             <div className="flex items-center gap-2">
               <Terminal size={12} />
               <span>Logs</span>
-              {isRunning && (
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              )}
+              {isRunning && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
             </div>
             {logsOpen ? <ChevronDown size={11} /> : <ChevronUp size={11} />}
           </button>
@@ -306,6 +286,10 @@ export default function Layout() {
     localStorage.removeItem('tenderpulse_disclaimer_dismissed')
   }
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+  }
+
   const sharedProps = {
     isRunning, loading, error, status, trigger, stop,
     isDisclaimerMinimized, setIsDisclaimerMinimized,
@@ -321,20 +305,29 @@ export default function Layout() {
         logsOpen ? 'w-80' : 'w-56'
       )}>
         <div className="flex flex-col flex-1 overflow-hidden">
-          {/* Top scrollable area */}
           <div className="flex flex-col flex-1 overflow-y-auto">
             <SidebarContent {...sharedProps} />
           </div>
-
-          {/* Log panel — slides in at the bottom */}
           {logsOpen && <LogPanel onClose={() => setLogsOpen(false)} />}
         </div>
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto">
-        <Outlet />
-      </main>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top bar with Sign Out */}
+        <div className="flex-shrink-0 h-10 bg-white border-b border-slate-200 flex items-center justify-end px-4">
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-red-500 transition-colors px-2 py-1 rounded hover:bg-red-50"
+          >
+            <LogOut size={12} />
+            Sign Out
+          </button>
+        </div>
+        <main className="flex-1 overflow-y-auto">
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 }

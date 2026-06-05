@@ -25,11 +25,18 @@ const allowedOrigins = [
   'http://localhost:5174',
   'http://localhost:5175',
   'http://localhost:4173',
-  process.env.FRONTEND_URL || 'https://tender-scrap-react-python.vercel.app',
-]
+  'https://tender-scrap-react-python.vercel.app',
+  'https://tender-scrap-react-python-6yyo08j7l.vercel.app', // ✅ actual deployment URL
+  process.env.FRONTEND_URL,                                  // ✅ set this on Render for future-proofing
+].filter(Boolean) as string[]
 
 app.use(cors({
-  origin: allowedOrigins,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g. curl, Render health checks)
+    if (!origin) return callback(null, true)
+    if (allowedOrigins.includes(origin)) return callback(null, true)
+    callback(new Error(`CORS: origin ${origin} not allowed`))
+  },
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type'],

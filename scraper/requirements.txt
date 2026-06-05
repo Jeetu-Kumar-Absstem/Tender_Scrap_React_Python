@@ -23,12 +23,9 @@ sib-api-v3-sdk==7.6.0
 apscheduler==3.10.4
 python-dotenv==1.0.1
 pydantic==2.7.1
-tenacity==8.3.0          # retry logic
-structlog==24.1.0         # structured JSON logging
+tenacity==8.3.0
+structlog==24.1.0
 python-dateutil==2.9.0
-hashlib-additional==1.2
 
 # Rate limiting
 ratelimit==2.2.1
-structlog
-bs4

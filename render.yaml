@@ -1,0 +1,42 @@
+services:
+  # Backend Express API server + Python scraper
+  - type: web
+    name: tenderpulse-api
+    runtime: node
+    plan: standard
+    buildCommand: |
+      npm install
+      pip install -r scraper/requirements.txt
+    startCommand: npm run server
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+    healthCheckPath: /health
+    autoDeploy: true
+
+  # Frontend React app (static deployment)
+  - type: static_site
+    name: tenderpulse-web
+    runtime: node
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://tenderpulse-api.onrender.com
+    autoDeploy: true
+
+databases:
+  # Optional: if you want to use Render's PostgreSQL
+  # - name: tenderpulse-db
+  #   databaseName: tenderpulse
+  #   plan: standard

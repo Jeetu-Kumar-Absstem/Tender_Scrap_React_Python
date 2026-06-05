@@ -15,8 +15,21 @@ export interface PipelineStatus {
   } | null
 }
 
+// Helper: fetch with explicit timeout (avoids browser's ~2s default on slow servers)
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 60000): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal })
+    return res
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+// Trigger the pipeline — 60s timeout to allow Render free tier cold start (~30-50s)
 export async function triggerPipeline(): Promise<{ message: string; started_at: string }> {
-  const res = await fetch(`${API_BASE}/api/run`, { method: 'POST' })
+  const res = await fetchWithTimeout(`${API_BASE}/api/run`, { method: 'POST' }, 60000)
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.detail ?? `HTTP ${res.status}`)
@@ -24,14 +37,16 @@ export async function triggerPipeline(): Promise<{ message: string; started_at: 
   return res.json()
 }
 
+// Status check — 10s is plenty once the server is awake
 export async function getPipelineStatus(): Promise<PipelineStatus> {
-  const res = await fetch(`${API_BASE}/api/status`)
+  const res = await fetchWithTimeout(`${API_BASE}/api/status`, {}, 10000)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return res.json()
 }
 
+// Stop the pipeline — 10s timeout
 export async function stopPipeline(): Promise<{ message: string }> {
-  const res = await fetch(`${API_BASE}/api/stop`, { method: 'POST' })
+  const res = await fetchWithTimeout(`${API_BASE}/api/stop`, { method: 'POST' }, 10000)
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err.detail ?? `HTTP ${res.status}`)

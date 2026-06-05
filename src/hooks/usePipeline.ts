@@ -2,6 +2,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { triggerPipeline, getPipelineStatus, stopPipeline, type PipelineStatus } from '../lib/pipelineApi'
 
+const KEEP_ALIVE_INTERVAL_MS = 10 * 60 * 1000 // 10 minutes — prevents Render free tier from sleeping
+
 export function usePipeline() {
   const [status, setStatus]   = useState<PipelineStatus | null>(null)
   const [error, setError]     = useState<string | null>(null)
@@ -24,6 +26,14 @@ export function usePipeline() {
     return () => clearInterval(interval)
   }, [fetchStatus])
 
+  // Keep-alive ping every 10 minutes to prevent Render free tier cold starts
+  useEffect(() => {
+    const keepAlive = setInterval(() => {
+      getPipelineStatus().catch(() => {}) // silent — just wake the server
+    }, KEEP_ALIVE_INTERVAL_MS)
+    return () => clearInterval(keepAlive)
+  }, [])
+
   const trigger = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -31,7 +41,12 @@ export function usePipeline() {
       await triggerPipeline()
       await fetchStatus()
     } catch (e: any) {
-      setError(e.message)
+      if (e.name === 'AbortError') {
+        // Render cold start took too long — ask user to retry
+        setError('Server is waking up, please try again in a moment.')
+      } else {
+        setError(e.message)
+      }
     } finally {
       setLoading(false)
     }
@@ -43,7 +58,11 @@ export function usePipeline() {
       await stopPipeline()
       await fetchStatus()
     } catch (e: any) {
-      setError(e.message)
+      if (e.name === 'AbortError') {
+        setError('Request timed out. Please try again.')
+      } else {
+        setError(e.message)
+      }
     }
   }, [fetchStatus])
 

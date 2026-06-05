@@ -11,14 +11,15 @@ const ROOT_DIR  = path.resolve(__dirname, '..')
 const app  = express()
 const PORT = process.env.PORT ?? 8000
 
-// ─── CORS — allow all origins (safe for this app, no auth cookies) ────────────
-app.use(cors({
+// ─── CORS — allow all origins ─────────────────────────────────
+const corsOptions = {
   origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type'],
-}))
+}
 
-app.options('*', cors()) // handle preflight for all routes
+app.use(cors(corsOptions))
+app.options(/.*/, cors(corsOptions)) // ✅ regex instead of '*' — works with Express 5 / path-to-regexp v8
 
 app.use(express.json())
 

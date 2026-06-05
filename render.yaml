@@ -32,7 +32,7 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_API_URL
-        value: https://tenderpulse-api.onrender.com
+        value: https://tender-scrap-react-python.onrender.com
     autoDeploy: true
 
 databases:

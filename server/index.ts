@@ -12,7 +12,6 @@ const ROOT_DIR  = path.resolve(__dirname, '..')
 const app  = express()
 const PORT = process.env.PORT ?? 8000
 
-// ─── CORS — allow all origins ─────────────────────────────────
 const corsOptions = {
   origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
@@ -21,14 +20,10 @@ const corsOptions = {
 
 app.use(cors(corsOptions))
 app.options(/.*/, cors(corsOptions))
-
 app.use(express.json())
 
-// ─── Resolve Python executable ───────────────────────────────
-// Priority: venv (has all pip packages) → system python3 → python
 function resolvePython(): string {
   const isWindows = process.platform === 'win32'
-
   const candidates = isWindows
     ? [
         path.join(ROOT_DIR, 'venv', 'Scripts', 'python.exe'),
@@ -38,7 +33,7 @@ function resolvePython(): string {
     : [
         path.join(ROOT_DIR, 'venv', 'bin', 'python'),
         path.join(ROOT_DIR, '.venv', 'bin', 'python'),
-        '/opt/render/project/src/venv/bin/python',  // Render venv path
+        '/opt/render/project/src/venv/bin/python',
         'python3',
         'python',
       ]
@@ -50,7 +45,7 @@ function resolvePython(): string {
         return candidate
       }
     } else {
-      return candidate // system command, trust it exists
+      return candidate
     }
   }
   return 'python3'
@@ -58,7 +53,6 @@ function resolvePython(): string {
 
 const PYTHON_EXE = resolvePython()
 
-// ─── Run state (in-memory) ───────────────────────────────────
 interface RunState {
   running:     boolean
   started_at:  string | null
@@ -79,6 +73,30 @@ const state: RunState = {
 
 let activeProcess: ChildProcess | null = null
 
+// ─── Log buffer & SSE clients ────────────────────────────────
+interface LogLine {
+  ts:   string
+  type: 'out' | 'err' | 'sys'
+  text: string
+}
+
+const MAX_LOG_LINES = 300
+let logBuffer: LogLine[] = []
+const sseClients: Set<Response> = new Set()
+
+function pushLog(type: LogLine['type'], text: string) {
+  const lines = text.split('\n').filter(l => l.trim())
+  for (const line of lines) {
+    const entry: LogLine = { ts: new Date().toISOString(), type, text: line }
+    logBuffer.push(entry)
+    if (logBuffer.length > MAX_LOG_LINES) logBuffer.shift()
+    // broadcast to all SSE clients
+    for (const client of sseClients) {
+      client.write(`data: ${JSON.stringify(entry)}\n\n`)
+    }
+  }
+}
+
 // ─── Routes ──────────────────────────────────────────────────
 
 app.get('/health', (_req: Request, res: Response) => {
@@ -87,6 +105,25 @@ app.get('/health', (_req: Request, res: Response) => {
 
 app.get('/api/status', (_req: Request, res: Response) => {
   res.json(state)
+})
+
+// SSE endpoint — streams live logs
+app.get('/api/logs', (req: Request, res: Response) => {
+  res.setHeader('Content-Type',  'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection',    'keep-alive')
+  res.flushHeaders()
+
+  // Send buffered history first
+  for (const entry of logBuffer) {
+    res.write(`data: ${JSON.stringify(entry)}\n\n`)
+  }
+
+  sseClients.add(res)
+
+  req.on('close', () => {
+    sseClients.delete(res)
+  })
 })
 
 app.post('/api/run', (_req: Request, res: Response) => {
@@ -98,30 +135,39 @@ app.post('/api/run', (_req: Request, res: Response) => {
   state.running    = true
   state.started_at = new Date().toISOString()
   state.last_result = null
-
-  console.log(`[server] Starting pipeline with: ${PYTHON_EXE}`)
-  console.log(`[server] Working dir: ${ROOT_DIR}`)
+  logBuffer = [] // clear logs on new run
+  pushLog('sys', `▶ Pipeline started at ${state.started_at}`)
+  pushLog('sys', `  Python: ${PYTHON_EXE}`)
 
   activeProcess = spawn(
     PYTHON_EXE,
     ['-m', 'scraper.pipeline'],
     {
       cwd:   ROOT_DIR,
-      env:   process.env,
+      env: {
+        ...process.env,
+        PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH ?? '',
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     }
   )
 
   activeProcess.stdout?.on('data', (chunk: Buffer) => {
-    process.stdout.write(`[pipeline] ${chunk.toString()}`)
+    const text = chunk.toString()
+    process.stdout.write(`[pipeline] ${text}`)
+    pushLog('out', text)
   })
+
   activeProcess.stderr?.on('data', (chunk: Buffer) => {
-    process.stderr.write(`[pipeline:err] ${chunk.toString()}`)
+    const text = chunk.toString()
+    process.stderr.write(`[pipeline:err] ${text}`)
+    pushLog('err', text)
   })
 
   activeProcess.on('close', (code: number | null) => {
     const success = code === 0
     console.log(`[server] Pipeline finished. Exit code: ${code}`)
+    pushLog('sys', `■ Pipeline finished — exit code ${code}`)
     state.running     = false
     state.last_result = {
       success,
@@ -134,6 +180,7 @@ app.post('/api/run', (_req: Request, res: Response) => {
 
   activeProcess.on('error', (err: Error) => {
     console.error(`[server] Failed to start pipeline: ${err.message}`)
+    pushLog('err', `Failed to start pipeline: ${err.message}`)
     state.running     = false
     state.last_result = {
       success:     false,
@@ -158,6 +205,7 @@ app.post('/api/stop', (_req: Request, res: Response) => {
     return
   }
   activeProcess.kill('SIGTERM')
+  pushLog('sys', '⛔ Pipeline stopped by user')
   state.running = false
   state.last_result = {
     success:     false,
@@ -173,5 +221,6 @@ app.listen(PORT, () => {
   console.log(`   Python: ${PYTHON_EXE}`)
   console.log(`   POST /api/run    → trigger pipeline`)
   console.log(`   GET  /api/status → check status`)
+  console.log(`   GET  /api/logs   → SSE log stream`)
   console.log(`   GET  /health     → health check`)
 })

@@ -99,7 +99,7 @@ function SidebarContent({
           <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
             <Activity size={14} className="text-white" />
           </div>
-          <span className="font-semibold text-slate-900 text-sm">TenderPulse</span>
+          <span className="font-semibold text-slate-900 text-sm">Absstem TenderHub</span>
         </div>
       </div>
 

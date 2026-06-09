@@ -48,7 +48,7 @@ log = structlog.get_logger()
 # Max sites scraped simultaneously.
 # 5 is a safe default: low memory pressure, good parallelism.
 # Raise to 8–10 if your machine has >16 GB RAM and you want more speed.
-CONCURRENCY = 7
+CONCURRENCY = 3
 
 
 # Asyncio lock to serialize Supabase writes (not thread-safe)

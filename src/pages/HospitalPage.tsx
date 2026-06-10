@@ -137,13 +137,18 @@ export default function HospitalPage() {
     if (!selectedState) return
 
     setCityLoading(true)
-    fetch(`/api/hospitals/cities?state=${encodeURIComponent(selectedState)}`)
+    // Call NABH directly from browser — no backend needed
+    fetch("https://nabh.co/wp-admin/admin-ajax.php", {
+      method:  "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+      body:    `action=get_cities_by_state&state=${encodeURIComponent(selectedState)}`,
+    })
       .then(r => r.json())
       .then((data: string[]) => {
         const cleaned = Array.from(new Set(
           data
-            .map(c => (typeof c === 'string' ? c.trim() : ''))
-            .filter(c => c.length > 1 && c.length < 40 && !/^\d/.test(c))
+            .map((c: unknown) => (typeof c === "string" ? c.trim() : ""))
+            .filter((c: string) => c.length > 1 && c.length < 40 && !/^\d/.test(c))
         )).sort()
         setCities(cleaned)
       })

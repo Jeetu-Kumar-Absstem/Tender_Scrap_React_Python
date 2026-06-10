@@ -226,7 +226,7 @@ app.post('/api/stop', (_req: Request, res: Response) => {
   res.json({ message: 'Pipeline interrupted' })
 })
 
-app.listen(PORT, () => {
+app.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`✅ TenderPulse server running at http://localhost:${PORT}`)
   console.log(`   Python: ${PYTHON_EXE}`)
   console.log(`   POST /api/run    → trigger pipeline`)

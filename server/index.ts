@@ -8,9 +8,6 @@ import { fileURLToPath } from 'url'
 import fs from 'fs'
 import hospitalRoutes from './routes/hospital'
 
-console.log('[server] hospitalRoutes type:', typeof hospitalRoutes)
-console.log('[server] hospitalRoutes stack length:', hospitalRoutes.stack?.length)
-
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR  = path.resolve(__dirname, '..')

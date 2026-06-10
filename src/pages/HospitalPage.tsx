@@ -122,7 +122,7 @@ export default function HospitalPage() {
   const scrapeAbortRef = useRef<AbortController | null>(null)
 
   // Debounce search
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => {
     clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => { setDebouncedQ(searchQuery); setPage(1) }, 350)

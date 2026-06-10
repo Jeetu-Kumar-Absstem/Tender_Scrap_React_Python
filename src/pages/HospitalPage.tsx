@@ -27,17 +27,6 @@ const NABH_STATES = [
 
 const PAGE_SIZE = 50
 
-// ── Helpers to parse city/state out of address string ─────────
-// Address format from NABH: "Street..., City, State, 6digitPIN"
-function parseCityState(address: string | null): { city: string; state: string } {
-  if (!address) return { city: '', state: '' }
-  let addr = address.replace(/,?\s*\d{6}\s*\.?\s*$/, '').trim()
-  addr = addr.replace(/,?\s*India\s*$/i, '').trim()
-  const parts = addr.split(',').map(p => p.trim()).filter(Boolean)
-  if (parts.length >= 2) return { state: parts[parts.length - 1], city: parts[parts.length - 2] }
-  return { city: '', state: '' }
-}
-
 interface HospitalRow {
   id:               string
   name:             string
@@ -73,13 +62,12 @@ function downloadCSV(rows: HospitalRow[], state: string, city: string) {
 function downloadPDF(rows: HospitalRow[], state: string, city: string) {
   const esc = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
   const trs = rows.map((h, i) => {
-    const { city: c, state: s } = parseCityState(h.address)
     return `
     <tr style="background:${i%2?'#f9fafb':'#fff'}">
       <td>${i+1}</td>
-      <td><strong>${esc(h.name)}</strong>${h.accreditation_no ? `<br/><code style="font-size:10px;color:#6b7280">${esc(h.accreditation_no)}</code>` : ''}</td>
-      <td>${esc(c||'—')}</td><td>${esc(s||'—')}</td>
-      <td>${esc(h.phone||'—')}</td><td>${esc(h.email||'—')}</td>
+      <td><strong>${esc(h.name)}</strong>${h.accreditation_no ? `<br/><code style="font-size:10px;color:#6b7280">${esc(h.accreditation_no)}</code>` : ''}${h.address ? `<br/><span style="font-size:10px;color:#6b7280">${esc(h.address)}</span>` : ''}</td>
+      <td>${esc(h.phone||'—')}</td>
+      <td>${esc(h.email||'—')}</td>
       <td>${h.website ? `<a href="${esc(h.website)}">${esc(h.website.replace(/^https?:\/\/(www\.)?/,'').slice(0,30))}</a>` : '—'}</td>
     </tr>`
   }).join('')
@@ -89,13 +77,13 @@ function downloadPDF(rows: HospitalRow[], state: string, city: string) {
       body{font-family:Arial,sans-serif;font-size:11px;margin:20px}
       h2{font-size:15px;margin:0 0 4px}p{font-size:11px;color:#6b7280;margin:0 0 12px}
       table{border-collapse:collapse;width:100%}
-      th{background:#1e40af;color:#fff;padding:6px 8px;text-align:left;font-size:10px}
-      td{padding:5px 8px;border-bottom:1px solid #e5e7eb;vertical-align:top}
+      th{background:#1e40af;color:#fff;padding:4px 6px;text-align:left;font-size:10px}
+      td{padding:4px 6px;border-bottom:1px solid #e5e7eb;vertical-align:top}
       a{color:#1e40af}@media print{body{margin:10mm}}
     </style></head><body>
     <h2>NABH Accredited Hospitals</h2>
     <p>State: <strong>${state||'All'}</strong> &nbsp;|&nbsp; City: <strong>${city||'All'}</strong> &nbsp;|&nbsp; Total: <strong>${rows.length.toLocaleString('en-IN')}</strong> &nbsp;|&nbsp; ${new Date().toLocaleString('en-IN')}</p>
-    <table><thead><tr><th>#</th><th>Hospital</th><th>City</th><th>State</th><th>Phone</th><th>Email</th><th>Website</th></tr></thead>
+    <table><thead><tr><th>#</th><th>Hospital</th><th>Phone</th><th>Email</th><th>Website</th></tr></thead>
     <tbody>${trs}</tbody></table></body></html>`
   const w = window.open('','_blank')
   if (!w) return
@@ -122,7 +110,7 @@ export default function HospitalPage() {
   const [cities,     setCities]     = useState<string[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [page,       setPage]       = useState(1)
-  const [sortDir,    setSortDir]    = useState<SortDir>('asc')   // sort by name only
+  const [sortDir,    setSortDir]    = useState<SortDir>('asc')
 
   const [loading,     setLoading]     = useState(false)
   const [cityLoading, setCityLoading] = useState(false)
@@ -131,7 +119,6 @@ export default function HospitalPage() {
   const [scrapeErr,   setScrapeErr]   = useState('')
   const [dlLoading,   setDlLoading]   = useState<'csv'|'pdf'|null>(null)
 
-  // AbortController ref to stop the scrape request
   const scrapeAbortRef = useRef<AbortController | null>(null)
 
   // Debounce search
@@ -143,8 +130,6 @@ export default function HospitalPage() {
   }, [searchQuery])
 
   // ── Load cities from NABH API when state changes ──────────
-  // Mirrors test_cities.py: GET https://nabh.co/wp-admin/admin-ajax.php?action=get_cities_by_state&state=<STATE>
-  // We proxy through /api/hospitals/cities?state=... to avoid CORS
   useEffect(() => {
     setSelectedCity('')
     setPage(1)
@@ -155,7 +140,6 @@ export default function HospitalPage() {
     fetch(`/api/hospitals/cities?state=${encodeURIComponent(selectedState)}`)
       .then(r => r.json())
       .then((data: string[]) => {
-        // data is a plain array of city name strings from the NABH API
         const cleaned = Array.from(new Set(
           data
             .map(c => (typeof c === 'string' ? c.trim() : ''))
@@ -163,16 +147,11 @@ export default function HospitalPage() {
         )).sort()
         setCities(cleaned)
       })
-      .catch(() => {
-        // Fallback: derive cities from already-loaded hospital addresses
-        setCities([])
-      })
+      .catch(() => { setCities([]) })
       .finally(() => setCityLoading(false))
   }, [selectedState])
 
   // ── Fetch hospitals from Supabase ─────────────────────────
-  // Filtering by state and city is done via ILIKE on address column
-  // since we no longer have separate city/state columns.
   const fetchHospitals = useCallback(async () => {
     setLoading(true)
     let q = supabase
@@ -209,7 +188,7 @@ export default function HospitalPage() {
     setPage(1)
   }
 
-  // ── Scraper — hardcoded Haryana, runs once ────────────────
+  // ── Scraper ────────────────────────────────────────────────
   const handleScrape = async () => {
     const ctrl = new AbortController()
     scrapeAbortRef.current = ctrl
@@ -220,7 +199,7 @@ export default function HospitalPage() {
       const res = await fetch('/api/hospitals/scrape', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ state: 'Haryana' }),   // hardcoded
+        body:    JSON.stringify({ state: 'Haryana' }),
         signal:  ctrl.signal,
       })
       if (!res.ok) throw new Error(`Server error ${res.status}`)
@@ -240,11 +219,8 @@ export default function HospitalPage() {
     }
   }
 
-  // ── Stop button ───────────────────────────────────────────
   const handleStop = () => {
-    if (scrapeAbortRef.current) {
-      scrapeAbortRef.current.abort()
-    }
+    if (scrapeAbortRef.current) scrapeAbortRef.current.abort()
   }
 
   const handleDownload = async (type: 'csv'|'pdf') => {
@@ -278,7 +254,6 @@ export default function HospitalPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Download buttons */}
           <button
             onClick={() => handleDownload('csv')}
             disabled={dlLoading !== null || totalCount === 0}
@@ -295,8 +270,6 @@ export default function HospitalPage() {
             {dlLoading === 'pdf' ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
             PDF
           </button>
-
-          {/* Refresh */}
           <button
             onClick={fetchHospitals}
             disabled={loading}
@@ -305,8 +278,6 @@ export default function HospitalPage() {
             <RefreshCw size={11} className={clsx(loading && 'animate-spin')} />
             Refresh
           </button>
-
-          {/* Scraper + Stop */}
           {!scraping ? (
             <button
               onClick={handleScrape}
@@ -347,8 +318,6 @@ export default function HospitalPage() {
 
       {/* ── Filter bar ── */}
       <div className="flex items-center gap-2 flex-wrap">
-
-        {/* State */}
         <select
           value={selectedState}
           onChange={e => { setSelectedState(e.target.value); setPage(1) }}
@@ -358,7 +327,6 @@ export default function HospitalPage() {
           {NABH_STATES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
 
-        {/* City — populated from NABH API once a state is chosen */}
         <div className="relative">
           <select
             value={selectedCity}
@@ -380,7 +348,6 @@ export default function HospitalPage() {
           )}
         </div>
 
-        {/* Search */}
         <div className="relative flex-1 min-w-[200px]">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           <input
@@ -392,7 +359,6 @@ export default function HospitalPage() {
           />
         </div>
 
-        {/* Clear */}
         {hasFilters && (
           <button
             onClick={clearFilters}
@@ -409,33 +375,31 @@ export default function HospitalPage() {
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
-                {/* Sortable name column */}
                 <th
                   onClick={handleSort}
-                  className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-slate-700 select-none whitespace-nowrap"
+                  className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:text-slate-700 select-none whitespace-nowrap"
                 >
                   <span className="flex items-center gap-0.5">
                     Hospital Name <SortIcon active dir={sortDir} />
                   </span>
                 </th>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">City</th>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">State</th>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Phone</th>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Email</th>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Website</th>
+                <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Address</th>
+                <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Phone</th>
+                <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Email</th>
+                <th className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Website</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center text-slate-400 text-sm">
+                  <td colSpan={5} className="py-16 text-center text-slate-400 text-sm">
                     <Loader2 size={18} className="animate-spin mx-auto mb-2 text-blue-500" />
                     Loading hospitals…
                   </td>
                 </tr>
               ) : hospitals.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center">
+                  <td colSpan={5} className="py-16 text-center">
                     <Hospital size={28} className="mx-auto mb-2 text-slate-300" />
                     <p className="text-slate-500 text-sm font-medium">No hospitals found</p>
                     <p className="text-slate-400 text-xs mt-1">
@@ -444,57 +408,50 @@ export default function HospitalPage() {
                   </td>
                 </tr>
               ) : (
-                hospitals.map((h, i) => {
-                  const { city, state } = parseCityState(h.address)
-                  return (
-                    <tr
-                      key={h.id}
-                      className={clsx('hover:bg-blue-50/40 transition-colors', i % 2 === 1 && 'bg-slate-50/50')}
-                    >
-                      {/* Name + accreditation + address */}
-                      <td className="px-4 py-3 max-w-xs">
-                        <div className="font-medium text-slate-900 text-sm leading-snug">{h.name}</div>
-                        {h.accreditation_no && (
-                          <span className="inline-block mt-1 px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-mono rounded">
-                            {h.accreditation_no}
-                          </span>
-                        )}
-                        {h.address && (
-                          <div className="text-[11px] text-slate-400 mt-1 leading-relaxed line-clamp-2">{h.address}</div>
-                        )}
-                      </td>
-                      {/* City and State parsed from address at render time */}
-                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{city || '—'}</td>
-                      <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{state || '—'}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {h.phone
-                          ? <a href={`tel:${h.phone}`} className="flex items-center gap-1 text-slate-600 hover:text-blue-600 transition-colors text-xs">
-                              <Phone size={10} className="text-slate-400" />{h.phone}
-                            </a>
-                          : <span className="text-slate-300">—</span>}
-                      </td>
-                      <td className="px-4 py-3">
-                        {h.email
-                          ? <a href={`mailto:${h.email}`} className="flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors text-xs max-w-[180px] truncate">
-                              <Mail size={10} className="flex-shrink-0" /><span className="truncate">{h.email}</span>
-                            </a>
-                          : <span className="text-slate-300">—</span>}
-                      </td>
-                      <td className="px-4 py-3">
-                        {h.website
-                          ? <a href={h.website} target="_blank" rel="noopener noreferrer"
-                              className="flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors text-xs max-w-[160px]"
-                              title={h.website}>
-                              <Globe size={10} className="flex-shrink-0" />
-                              <span className="truncate">
-                                {(() => { try { return new URL(h.website).hostname.replace('www.','') } catch { return h.website.slice(0,25) } })()}
-                              </span>
-                            </a>
-                          : <span className="text-slate-300">—</span>}
-                      </td>
-                    </tr>
-                  )
-                })
+                hospitals.map((h, i) => (
+                  <tr
+                    key={h.id}
+                    className={clsx('hover:bg-blue-50/40 transition-colors', i % 2 === 1 && 'bg-slate-50/50')}
+                  >
+                    <td className="px-3 py-2.5 max-w-[200px]">
+                      <div className="font-medium text-slate-900 text-xs leading-snug">{h.name}</div>
+                      {h.accreditation_no && (
+                        <span className="inline-block mt-0.5 px-1 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-mono rounded">
+                          {h.accreditation_no}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-500 text-xs max-w-[200px]">
+                      {h.address ? <span className="line-clamp-2">{h.address}</span> : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      {h.phone
+                        ? <a href={`tel:${h.phone}`} className="flex items-center gap-1 text-slate-600 hover:text-blue-600 transition-colors text-xs">
+                            <Phone size={10} className="text-slate-400" />{h.phone}
+                          </a>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {h.email
+                        ? <a href={`mailto:${h.email}`} className="flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors text-xs max-w-[160px] truncate">
+                            <Mail size={10} className="flex-shrink-0" /><span className="truncate">{h.email}</span>
+                          </a>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {h.website
+                        ? <a href={h.website} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-blue-600 hover:text-blue-800 transition-colors text-xs max-w-[130px]"
+                            title={h.website}>
+                            <Globe size={10} className="flex-shrink-0" />
+                            <span className="truncate">
+                              {(() => { try { return new URL(h.website).hostname.replace('www.','') } catch { return h.website.slice(0,20) } })()}
+                            </span>
+                          </a>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>

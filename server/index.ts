@@ -1,10 +1,13 @@
 // server/index.ts
+import 'dotenv/config'
 import express, { Request, Response } from 'express'
 import cors from 'cors'
 import { spawn, ChildProcess } from 'child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
+import hospitalRoutes from './routes/hospital'
+
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR  = path.resolve(__dirname, '..')
@@ -18,9 +21,16 @@ const corsOptions = {
   allowedHeaders: ['Content-Type'],
 }
 
+// app.use(cors(corsOptions))
+// app.options(/.*/, cors(corsOptions))
+// app.use(express.json())
+
 app.use(cors(corsOptions))
 app.options(/.*/, cors(corsOptions))
 app.use(express.json())
+
+// Hospital routes
+app.use('/api/hospitals', hospitalRoutes)
 
 function resolvePython(): string {
   const isWindows = process.platform === 'win32'

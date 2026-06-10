@@ -1,6 +1,6 @@
 // src/components/dashboard/Layout.tsx
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, FileSearch, Activity, Play, Loader2, CheckCircle2, AlertCircle, X, ChevronUp, AlertTriangle, Square, Terminal, ChevronDown, Trash2, LogOut } from 'lucide-react'
+import { LayoutDashboard, FileSearch, Activity, Play, Loader2, CheckCircle2, AlertCircle, X, ChevronUp, AlertTriangle, Square, Terminal, ChevronDown, Trash2, LogOut, Hospital } from 'lucide-react'
 import { usePipeline } from '../../hooks/usePipeline'
 import { useLogs } from '../../hooks/useLogs'
 import { supabase } from '../../lib/supabase'
@@ -13,6 +13,7 @@ const lufgaSemiboldStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 600 
 const nav = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/tenders',   icon: FileSearch,      label: 'Tenders' },
+  { to: '/hospitals', icon: Hospital,        label: 'Hospital Data' },
 ]
 
 // ─── Terminal log panel ───────────────────────────────────────

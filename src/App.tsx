@@ -5,6 +5,7 @@ import DashboardPage from './pages/DashboardPage'
 import TendersPage from './pages/TendersPage'
 import Login from './pages/Login'
 import { useAuth } from './hooks/useAuth'
+import HospitalPage from './pages/HospitalPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,11 +21,12 @@ function AuthGate() {
 
   return (
     <Routes>
-      <Route element={<Layout />}>
-        <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/tenders"   element={<TendersPage />} />
-      </Route>
+     <Route element={<Layout />}>
+  <Route index element={<Navigate to="/dashboard" replace />} />
+  <Route path="/dashboard" element={<DashboardPage />} />
+  <Route path="/tenders" element={<TendersPage />} />
+  <Route path="/hospitals" element={<HospitalPage />} />
+</Route>
     </Routes>
   )
 }

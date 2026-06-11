@@ -16,6 +16,28 @@ import { createClient }              from "@supabase/supabase-js";
 
 const router    = Router();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ── NABH state order (mirrors HospitalPage.tsx) ───────────────
+const NABH_STATES = [
+  'Ahmedabad','Andhra Pradesh','Arunachal Pradesh','Assam',
+  'Bagmati Zone','Bangalore','Bihar','Biratnagar','Chandigarh',
+  'Chattisgarh','Chhattisgarh','Chitwan','Delhi','Gandaki Zone',
+  'Goa','Gujarat','Gwarko','Haryana','Himachal Pradesh','Hyderabad',
+  'Jammu and Kashmir','Jharkhand','Kanchanbari','Karnataka','Kathmandu',
+  'Kerala','Kolkata','Koshi Zone','Lumbini','Lumbini Zone',
+  'Madhya Pradesh','Maharashtra','Manipur','Mechi Zone','Meghalaya',
+  'Mizoram','Morang','Nagaland','Narayani Zone','Nepalgunj',
+  'New Delhi','Odisha','Orissa','Pokhara','Pondicherry','Puducherry',
+  'Punjab','Rajasthan','Rani Gaon','Sikkim','Srinagar','Tamil Nadu',
+  'Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal',
+]
+
+function getStateRank(address: string | null): number {
+  if (!address) return 999
+  const addr = address.toLowerCase()
+  const idx = NABH_STATES.findIndex(s => addr.includes(s.toLowerCase()))
+  return idx === -1 ? 999 : idx
+}
 const ROOT_DIR  = path.resolve(__dirname, "../..");
 
 // ── Resolve venv Python (mirrors index.ts logic) ──────────────
@@ -138,12 +160,13 @@ router.get("/cities", async (req: Request, res: Response) => {
 // ── GET /api/hospitals ────────────────────────────────────────
 // Optional server-side proxy — frontend queries Supabase directly.
 router.get("/", async (req: Request, res: Response) => {
-  const state  = (req.query.state as string | undefined) || "";
-  const city   = (req.query.city  as string | undefined) || "";
-  const q      = (req.query.q     as string | undefined) || "";
-  const page   = Math.max(1, parseInt((req.query.page  as string) || "1",  10));
-  const limit  = Math.min(200, parseInt((req.query.limit as string) || "50", 10));
-  const offset = (page - 1) * limit;
+  const state     = (req.query.state    as string | undefined) || "";
+  const city      = (req.query.city     as string | undefined) || "";
+  const q         = (req.query.q        as string | undefined) || "";
+  const sortState = req.query.sortState === "true";
+  const page      = Math.max(1, parseInt((req.query.page  as string) || "1",  10));
+  const limit     = Math.min(200, parseInt((req.query.limit as string) || "50", 10));
+  const offset    = (page - 1) * limit;
 
   let query = supabase
     .from("nabh_hospitals")
@@ -153,13 +176,33 @@ router.get("/", async (req: Request, res: Response) => {
   if (city)  query = query.ilike("address", `%${city}%`);
   if (q)     query = query.ilike("name",    `%${q}%`);
 
-  query = query.order("name").range(offset, offset + limit - 1);
+  // When sortState is off, use DB-level name sort + pagination as before.
+  // When sortState is on, fetch all matching rows so we can sort by NABH_STATES order.
+  if (sortState) {
+    query = query.order("name")  // secondary sort by name
+  } else {
+    query = query.order("name").range(offset, offset + limit - 1);
+  }
 
   const { data, error, count } = await query;
   if (error) return res.status(500).json({ error: error.message });
 
+  let rows = (data ?? []) as Array<{ address: string | null; name: string; [key: string]: unknown }>
+
+  if (sortState) {
+    // Sort client-side by NABH_STATES index order, then by name within same state
+    rows = rows.sort((a, b) => {
+      const rankA = getStateRank(a.address)
+      const rankB = getStateRank(b.address)
+      if (rankA !== rankB) return rankA - rankB
+      return a.name.localeCompare(b.name)
+    })
+    // Apply pagination after sort
+    rows = rows.slice(offset, offset + limit)
+  }
+
   return res.json({
-    data,
+    data:       rows,
     total:      count,
     page,
     limit,

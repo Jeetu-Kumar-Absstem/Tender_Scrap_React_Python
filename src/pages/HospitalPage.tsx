@@ -112,6 +112,8 @@ export default function HospitalPage() {
   const [page,       setPage]       = useState(1)
   const [sortDir,    setSortDir]    = useState<SortDir>('asc')
 
+  const [sortByState, setSortByState] = useState(false)
+
   const [loading,     setLoading]     = useState(false)
   const [cityLoading, setCityLoading] = useState(false)
   const [scraping,    setScraping]    = useState(false)
@@ -137,12 +139,8 @@ export default function HospitalPage() {
     if (!selectedState) return
 
     setCityLoading(true)
-    // Call NABH directly from browser — no backend needed
-    fetch("https://nabh.co/wp-admin/admin-ajax.php", {
-      method:  "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
-      body:    `action=get_cities_by_state&state=${encodeURIComponent(selectedState)}`,
-    })
+    // Proxy through our Express server to avoid CORS block from nabh.co
+    fetch(`/api/hospitals/cities?state=${encodeURIComponent(selectedState)}`)
       .then(r => r.json())
       .then((data: string[]) => {
         const cleaned = Array.from(new Set(
@@ -172,9 +170,19 @@ export default function HospitalPage() {
 
     const { data, count } = await q
     setLoading(false)
-    setHospitals((data as HospitalRow[]) ?? [])
+    let rows = (data as HospitalRow[]) ?? []
+    if (sortByState) {
+      rows = [...rows].sort((a, b) => {
+        const idxA = NABH_STATES.findIndex(s => (a.address ?? '').toLowerCase().includes(s.toLowerCase()))
+        const idxB = NABH_STATES.findIndex(s => (b.address ?? '').toLowerCase().includes(s.toLowerCase()))
+        const rankA = idxA === -1 ? 999 : idxA
+        const rankB = idxB === -1 ? 999 : idxB
+        return rankA !== rankB ? rankA - rankB : a.name.localeCompare(b.name)
+      })
+    }
+    setHospitals(rows)
     setTotalCount(count ?? 0)
-  }, [selectedState, selectedCity, debouncedQ, page, sortDir])
+  }, [selectedState, selectedCity, debouncedQ, page, sortDir, sortByState])
 
   useEffect(() => { fetchHospitals() }, [fetchHospitals])
 
@@ -259,6 +267,19 @@ export default function HospitalPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => { setSortByState(v => !v); setPage(1) }}
+            title="Sort hospitals in NABH state order"
+            className={clsx(
+              'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all',
+              sortByState
+                ? 'border-blue-400 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300'
+            )}
+          >
+            <ChevronDown size={11} className={clsx('transition-transform', sortByState && 'rotate-180')} />
+            State Order
+          </button>
           <button
             onClick={() => handleDownload('csv')}
             disabled={dlLoading !== null || totalCount === 0}

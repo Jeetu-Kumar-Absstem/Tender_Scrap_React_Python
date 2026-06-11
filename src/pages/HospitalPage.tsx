@@ -10,6 +10,11 @@ import {
 import { supabase } from '../lib/supabase'
 import { clsx } from 'clsx'
 
+// ── API base URL ──────────────────────────────────────────────
+// In dev: empty string → relative paths work via Vite proxy
+// In prod: set VITE_API_URL=https://tender-scrap-react-python.onrender.com in Render env
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? ''
+
 // ── Static NABH state list ────────────────────────────────────
 const NABH_STATES = [
   'Ahmedabad','Andhra Pradesh','Arunachal Pradesh','Assam',
@@ -140,7 +145,7 @@ export default function HospitalPage() {
 
     setCityLoading(true)
     // Proxy through our Express server to avoid CORS block from nabh.co
-    fetch(`/api/hospitals/cities?state=${encodeURIComponent(selectedState)}`)
+    fetch(`${API_BASE}/api/hospitals/cities?state=${encodeURIComponent(selectedState)}`)
       .then(r => r.json())
       .then((data: string[]) => {
         const cleaned = Array.from(new Set(
@@ -209,7 +214,7 @@ export default function HospitalPage() {
     setScrapeMsg('Scraping Haryana hospitals from NABH and upserting to Supabase…')
     setScrapeErr('')
     try {
-      const res = await fetch('/api/hospitals/scrape', {
+      const res = await fetch(`${API_BASE}/api/hospitals/scrape`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ state: 'Haryana' }),

@@ -191,14 +191,32 @@ export default function HospitalPage() {
 
   useEffect(() => { fetchHospitals() }, [fetchHospitals])
 
-  // ── Fetch all rows for download ───────────────────────────
+  // ── Fetch ALL rows for download (batched to bypass Supabase 1000-row limit) ──
   const fetchAll = useCallback(async (): Promise<HospitalRow[]> => {
-    let q = supabase.from('nabh_hospitals').select('*').order('name', { ascending: sortDir === 'asc' })
-    if (selectedState) q = q.ilike('address', `%${selectedState}%`)
-    if (selectedCity)  q = q.ilike('address', `%${selectedCity}%`)
-    if (debouncedQ.trim()) q = q.ilike('name', `%${debouncedQ.trim()}%`)
-    const { data } = await q
-    return (data as HospitalRow[]) ?? []
+    const BATCH = 1000
+    const all: HospitalRow[] = []
+    let from = 0
+
+    while (true) {
+      let q = supabase
+        .from('nabh_hospitals')
+        .select('*')
+        .order('name', { ascending: sortDir === 'asc' })
+        .range(from, from + BATCH - 1)
+
+      if (selectedState)     q = q.ilike('address', `%${selectedState}%`)
+      if (selectedCity)      q = q.ilike('address', `%${selectedCity}%`)
+      if (debouncedQ.trim()) q = q.ilike('name',    `%${debouncedQ.trim()}%`)
+
+      const { data, error } = await q
+      if (error || !data || data.length === 0) break
+
+      all.push(...(data as HospitalRow[]))
+      if (data.length < BATCH) break   // last page
+      from += BATCH
+    }
+
+    return all
   }, [selectedState, selectedCity, debouncedQ, sortDir])
 
   const handleSort = () => {
@@ -211,7 +229,7 @@ export default function HospitalPage() {
     const ctrl = new AbortController()
     scrapeAbortRef.current = ctrl
     setScraping(true)
-    setScrapeMsg('Scraping Haryana hospitals from NABH and upserting to Supabase…')
+    setScrapeMsg('Scraping hospitals from NABH and upserting to Supabase…')
     setScrapeErr('')
     try {
       const res = await fetch(`${API_BASE}/api/hospitals/scrape`, {
@@ -291,7 +309,7 @@ export default function HospitalPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {dlLoading === 'csv' ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
-            CSV
+            {dlLoading === 'csv' ? `Fetching ${totalCount.toLocaleString('en-IN')}…` : 'CSV'}
           </button>
           <button
             onClick={() => handleDownload('pdf')}
@@ -299,7 +317,7 @@ export default function HospitalPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {dlLoading === 'pdf' ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
-            PDF
+            {dlLoading === 'pdf' ? `Fetching ${totalCount.toLocaleString('en-IN')}…` : 'PDF'}
           </button>
           <button
             onClick={fetchHospitals}

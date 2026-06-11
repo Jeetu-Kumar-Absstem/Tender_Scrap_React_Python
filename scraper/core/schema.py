@@ -34,7 +34,7 @@ class TenderStatus(str, Enum):
 # ─── Keyword lists ───────────────────────────────────────────
 INCLUDE_KEYWORDS: list[str] =[
     # From PSA Oxygen Plant
-    "oxygen plant", "psa oxygen generation plant", "pressure swing adsorption oxygen",
+    "psa plant","Oxygen Generation Plant","oxygen plant", "psa oxygen generation plant", "pressure swing adsorption oxygen",
     "medical oxygen generation plant", "oxygen plant sitc", "on-site oxygen generation",
     "oxygen generator plant", "oxygen gas generator", "psa oxygen",
 

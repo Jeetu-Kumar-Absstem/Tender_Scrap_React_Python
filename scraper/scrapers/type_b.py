@@ -151,14 +151,28 @@ def _header_index_map(header_cells: list[str]) -> dict[str, int]:
     mapping: dict[str, int] = {}
     for idx, raw in enumerate(header_cells):
         text = " ".join(raw.lower().split())
+
+        # Standard NIC portals — separate title column
         if "tender title" in text or "corrigendum title" in text:
             mapping["title"] = idx
-        elif "reference no" in text or "ref no" in text or "reference number" in text:
-            mapping["reference"] = idx
+
+        # J&K (and similar) portals — single combined "Title and Ref.No./Tender ID" column
+        # Both title link and reference number live in the same <td>
+        elif "title and ref" in text or "title & ref" in text:
+            mapping["title"] = idx
+            mapping["reference"] = idx  # same cell; ref extracted separately in parse loop
+
+        # Standalone reference column (other portals); don't overwrite combined mapping
+        elif "reference no" in text or "ref no" in text or "reference number" in text or "tender id" in text:
+            if "reference" not in mapping:
+                mapping["reference"] = idx
+
         elif "closing date" in text or "due date" in text:
             mapping["closing"] = idx
+
         elif "bid opening date" in text or "opening date" in text:
             mapping["bid"] = idx
+
     return mapping
 
 
@@ -237,7 +251,7 @@ async def _find_results_table(page: Page):
         except Exception:
             continue
 
-        if "tender title" not in text and "corrigendum title" not in text:
+        if "tender title" not in text and "corrigendum title" not in text and "title and ref" not in text and "title & ref" not in text:
             continue
 
         score = row_count
@@ -368,7 +382,16 @@ async def _parse_results_table(
             ref_no = ""
             if ref_idx < cell_count:
                 try:
-                    ref_no = (await cells.nth(ref_idx).inner_text()).strip()
+                    ref_cell_text = (await cells.nth(ref_idx).inner_text()).strip()
+                    if ref_idx == title_idx:
+                        # J&K combined column: cell looks like
+                        # "[CAMC/Operationalization of Oxygen...] [MHDU/TS/2026-27/14]\n[2026_PWDJK_311911_1]"
+                        # Use the last [bracketed] token as the reference number
+                        import re as _re
+                        bracket_matches = _re.findall(r'\[([^\]]+)\]', ref_cell_text)
+                        ref_no = bracket_matches[-1].strip() if bracket_matches else ""
+                    else:
+                        ref_no = ref_cell_text
                 except Exception:
                     ref_no = ""
 
@@ -448,38 +471,60 @@ async def _search_nic_portal(
 
     for keyword in INCLUDE_KEYWORDS:
         try:
-            search_form = page.locator("form#tenderSearch").first
-            search_input = search_form.locator('input[name="SearchDescription"], #SearchDescription').first
-            search_button = search_form.locator('input[name="Go"], input#Go').first
+            # ── Frame-aware search: NIC portals embed the search form in an iframe ──
+            async def _find_search_elements():
+                """Return (frame, search_input, search_button) from whichever frame has the form."""
+                for frame in page.frames:
+                    try:
+                        inp = frame.locator(
+                            'form#tenderSearch input[name="SearchDescription"], '
+                            'form#tenderSearch #SearchDescription'
+                        ).first
+                        btn = frame.locator(
+                            'form#tenderSearch input[name="Go"], '
+                            'form#tenderSearch input#Go'
+                        ).first
+                        if await inp.count() > 0 and await btn.count() > 0:
+                            return frame, inp, btn
+                    except Exception:
+                        continue
+                return None, None, None
 
-            if await search_input.count() == 0 or await search_button.count() == 0:
+            _frame, search_input, search_button = await _find_search_elements()
+
+            if search_input is None:
+                # Reload and retry once
                 await page.goto(base_url, wait_until="domcontentloaded", timeout=45_000)
-                await _human_delay(400, 700)  # Reduced from 800–1500 ms
-                search_form = page.locator("form#tenderSearch").first
-                search_input = search_form.locator('input[name="SearchDescription"], #SearchDescription').first
-                search_button = search_form.locator('input[name="Go"], input#Go').first
-                if await search_input.count() == 0 or await search_button.count() == 0:
+                await _human_delay(400, 700)
+                _frame, search_input, search_button = await _find_search_elements()
+                if search_input is None:
                     log.warning("nic.search_input_lost", site=site_config.name, keyword=keyword)
                     continue
 
             await search_input.click(timeout=8_000)
-            await _human_delay(40, 80)       # Reduced from 80–160 ms
+            await _human_delay(40, 80)
             await search_input.fill("")
-            await search_input.type(keyword, delay=random.randint(30, 60))  # Reduced from 60–130 ms
-            await _human_delay(40, 80)       # Reduced from 80–180 ms
+            await search_input.type(keyword, delay=random.randint(30, 60))
+            await _human_delay(40, 80)
 
             await search_button.click(timeout=8_000)
-            await _human_delay(150, 300)     # Reduced from 250–500 ms
+            await _human_delay(300, 600)  # slightly longer — give results page time to load
 
             try:
-                await page.wait_for_url("**FrontEndAdvancedSearchResult**", timeout=5_000)
+                await page.wait_for_url("**FrontEndAdvancedSearchResult**", timeout=8_000)
             except Exception:
-                await _human_delay(150, 300)  # Reduced from 300–600 ms
+                await _human_delay(300, 500)
 
             try:
-                await page.wait_for_selector('tr[id^="informal_"]', timeout=6_000)
+                await page.wait_for_selector('tr[id^="informal_"]', timeout=8_000)
             except Exception:
-                await _human_delay(100, 200)  # Reduced from 200–400 ms
+                # Log so we know — but still attempt parse (table may use different row selector)
+                log.warning(
+                    "nic.no_result_rows",
+                    site=site_config.name,
+                    keyword=keyword,
+                    page_url=page.url,
+                )
 
             records = await _parse_results_table(
                 page=page,

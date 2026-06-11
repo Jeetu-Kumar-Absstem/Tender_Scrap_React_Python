@@ -27,22 +27,29 @@ function openNicLink(url: string) {
     window.open(url, '_blank', 'noopener,noreferrer')
     return
   }
+
   try {
     const parsed  = new URL(url)
     const baseUrl = `${parsed.protocol}//${parsed.hostname}/nicgep/app`
-    const win     = window.open(url, '_blank', 'noopener,noreferrer')
-    if (win) {
-      setTimeout(() => {
-        try {
-          if (win.document?.body?.innerText?.includes('timed out')) {
-            const restartLink = win.document.querySelector('a[href*="restart"], a:nth-child(1)')
-            if (restartLink) (restartLink as HTMLAnchorElement).click()
-          }
-        } catch {
-          win.location.href = baseUrl
-        }
-      }, 1500)
+
+    // Open the portal homepage first to establish a fresh session cookie.
+    // Can't read win.document (cross-origin CORS block), so we use a fixed
+    // delay — 2500 ms is enough for NIC portals to complete session handshake.
+    const win = window.open(baseUrl, '_blank')
+    if (!win) {
+      // Popup blocked — fall back to direct open
+      window.open(url, '_blank', 'noopener,noreferrer')
+      return
     }
+
+    setTimeout(() => {
+      try {
+        win.location.href = url   // navigate same tab to the tender detail
+      } catch {
+        // Tab was closed by the user in the meantime — ignore
+      }
+    }, 2500)
+
   } catch {
     window.open(url, '_blank', 'noopener,noreferrer')
   }

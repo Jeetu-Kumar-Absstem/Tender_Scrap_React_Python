@@ -202,28 +202,10 @@ function SidebarContent({
                     </button>
                   </div>
                 </div>
-                <div className="p-3 space-y-2">
+                <div className="p-3">
                   <p className="text-[11px] text-amber-800 leading-relaxed">
-                    <span className="font-semibold">⚠️ Open Button URL session may be timed out</span>
+                    💡 Click <strong className="text-amber-900">[Open]</strong> on any tender and wait — it loads the portal homepage first, then opens the tender automatically. Needs Restart for some portals
                   </p>
-                  <div className="space-y-1.5">
-                    {[
-                      ['Click', '[Open]', 'on any tender'],
-                      ['If timeout → Click', '"Restart Session"', 'on redirected page'],
-                      ['Return here & click', '[Open]', 'again'],
-                    ].map(([pre, bold, post], i) => (
-                      <div key={i} className="flex items-start gap-1.5 text-[10px]">
-                        <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-amber-200 text-amber-800 text-[9px] font-bold flex-shrink-0">{i + 1}</span>
-                        <span className="text-amber-700">{pre} <strong className="text-amber-900">{bold}</strong> {post}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-1.5 pt-1.5 border-t border-amber-200">
-                    <p className="text-[9px] text-amber-600 flex items-center gap-1">
-                      <span>💡</span>
-                      <span>Once per site session of 3-4 minutes — works after this</span>
-                    </p>
-                  </div>
                 </div>
               </div>
             )}
@@ -328,6 +310,40 @@ export default function Layout() {
         <main className="flex-1 overflow-y-auto">
           <Outlet />
         </main>
+        {/* Footer */}
+        <footer className="flex-shrink-0 border-t border-slate-200 bg-white px-6 py-2 flex items-center justify-between">
+          <p className="text-[10px] text-slate-400">
+            © {new Date().getFullYear()} Absstem Technologies. All rights reserved.
+          </p>
+          <div className="flex items-center gap-3">
+            <a
+              href="https://absstem.com/privacy-policy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] text-slate-400 hover:text-blue-600 transition-colors"
+            >
+              Privacy Policy
+            </a>
+            <span className="text-slate-300 text-[10px]">|</span>
+            <a
+              href="https://absstem.com/terms-condition"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] text-slate-400 hover:text-blue-600 transition-colors"
+            >
+              Terms & Conditions
+            </a>
+            <span className="text-slate-300 text-[10px]">|</span>
+            <a
+              href="https://absstem.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] text-slate-400 hover:text-blue-600 transition-colors"
+            >
+              absstem.com
+            </a>
+          </div>
+        </footer>
       </div>
     </div>
   )

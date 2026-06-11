@@ -21,10 +21,6 @@ const corsOptions = {
   allowedHeaders: ['Content-Type'],
 }
 
-// app.use(cors(corsOptions))
-// app.options(/.*/, cors(corsOptions))
-// app.use(express.json())
-
 app.use(cors(corsOptions))
 app.options(/.*/, cors(corsOptions))
 app.use(express.json())
@@ -229,8 +225,16 @@ app.post('/api/stop', (_req: Request, res: Response) => {
 app.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`✅ TenderPulse server running at http://localhost:${PORT}`)
   console.log(`   Python: ${PYTHON_EXE}`)
-  console.log(`   POST /api/run    → trigger pipeline`)
-  console.log(`   GET  /api/status → check status`)
-  console.log(`   GET  /api/logs   → SSE log stream`)
-  console.log(`   GET  /health     → health check`)
+  console.log(`── Pipeline endpoints ──────────────────────`)
+  console.log(`   POST /api/run             → trigger pipeline`)
+  console.log(`   GET  /api/status          → check status`)
+  console.log(`   GET  /api/logs            → SSE log stream`)
+  console.log(`   GET  /health              → health check`)
+  console.log(`── Hospital endpoints ──────────────────────`)
+  console.log(`   POST /api/hospitals/scrape  → scrape Haryana hospitals`)
+  console.log(`   GET  /api/hospitals/cities  → city dropdown (NABH proxy)`)
+  console.log(`   GET  /api/hospitals         → list hospitals (Supabase)`)
+  console.log(`   SUPABASE_URL set:         ${!!process.env.SUPABASE_URL}`)
+  console.log(`   SUPABASE_SERVICE_KEY set: ${!!process.env.SUPABASE_SERVICE_KEY}`)
+  console.log(`────────────────────────────────────────────`)
 })

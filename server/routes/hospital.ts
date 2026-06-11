@@ -52,6 +52,7 @@ function resolvePython(): string {
     : [
         path.join(ROOT_DIR, "venv", "bin", "python"),
         path.join(ROOT_DIR, ".venv", "bin", "python"),
+        "/opt/render/project/src/venv/bin/python",
         "python3",
         "python",
       ];

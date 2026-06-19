@@ -1,22 +1,11 @@
 // src/hooks/useTender18.ts
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
+import { Tender18Tender } from '../types/tender18'
 
-export interface Tender18Tender {
-  id: string
-  title: string | null
-  reference_number: string | null
-  organization: string | null
-  deadline: string | null
-  estimated_value: string | null
-  location: string | null
-  source_url: string
-  url_hash: string
-  keywords_matched: string[]
-  scraped_at: string
-  deleted_at: string | null
-  user_status: 'active' | 'starred' | 'done'
-}
+// tender18_tenders is not in Supabase generated types, so we escape here once
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = supabase as any
 
 export function useTender18Tenders() {
   return useQuery({
@@ -25,7 +14,7 @@ export function useTender18Tenders() {
       console.log('[useTender18] Fetching from tender18_tenders...')
       
       try {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from('tender18_tenders')
           .select('*')
           .is('deleted_at', null)
@@ -54,13 +43,12 @@ export function useTender18Actions() {
   const queryClient = useQueryClient()
 
   const updateStatus = useMutation({
-    mutationFn: async ({ id, user_status }: { id: string; user_status: 'active' | 'starred' | 'done' }) => {
+    mutationFn: async ({ id, user_status }: { id: string; user_status: Tender18Tender['user_status'] }) => {
       console.log('[useTender18] Updating status:', id, user_status)
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('tender18_tenders')
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .update({ user_status } as any)
+        .update({ user_status })
         .eq('id', id)
         .select()
       
@@ -84,10 +72,9 @@ export function useTender18Actions() {
     mutationFn: async (id: string) => {
       console.log('[useTender18] Deleting tender:', id)
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('tender18_tenders')
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .update({ deleted_at: new Date().toISOString() } as any)
+        .update({ deleted_at: new Date().toISOString() })
         .eq('id', id)
         .select()
       

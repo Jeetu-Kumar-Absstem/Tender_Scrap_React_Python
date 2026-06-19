@@ -1,6 +1,6 @@
 // src/components/dashboard/Layout.tsx
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, FileSearch, Activity, Play, Loader2, CheckCircle2, AlertCircle, X, ChevronUp, AlertTriangle, Square, Terminal, ChevronDown, Trash2, LogOut, Hospital } from 'lucide-react'
+import { LayoutDashboard, FileSearch, Activity, Play, Loader2, CheckCircle2, AlertCircle, X, ChevronUp, AlertTriangle, Square, Terminal, ChevronDown, Trash2, LogOut, Hospital, Globe } from 'lucide-react'
 import { usePipeline } from '../../hooks/usePipeline'
 import { useLogs } from '../../hooks/useLogs'
 import { supabase } from '../../lib/supabase'
@@ -13,6 +13,7 @@ const lufgaSemiboldStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 600 
 const nav = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/tenders',   icon: FileSearch,      label: 'Tenders' },
+  { to: '/more-portals', icon: Globe,        label: 'More Portals' },
   { to: '/hospitals', icon: Hospital,        label: 'Hospital Data' },
 ]
 
@@ -79,8 +80,8 @@ function SidebarContent({
   showDisclaimer,
   logsOpen, setLogsOpen,
 }: any) {
-  const lastSuccess = status?.last_result?.success
-  const runStatus   = status?.last_result?.status
+  const lastSuccess = status?.pipeline?.last_result?.success
+  const runStatus   = status?.pipeline?.last_result?.status
 
   const getStatusDisplay = () => {
     if (runStatus === 'interrupted') return { label: 'Last run interrupted', icon: 'alert', color: 'text-amber-600' }
@@ -133,7 +134,7 @@ function SidebarContent({
           </button>
         )}
 
-        {status?.last_result && (
+        {status?.pipeline?.last_result && (
           <div className={clsx('flex items-center gap-1.5 mt-2 px-1 text-[11px]', statusDisplay.color)}>
             {statusDisplay.icon === 'check' && <CheckCircle2 size={10} />}
             {statusDisplay.icon === 'alert' && runStatus === 'interrupted' && <AlertTriangle size={10} />}

@@ -1,8 +1,10 @@
+// src/App.tsx
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/dashboard/Layout'
 import DashboardPage from './pages/DashboardPage'
 import TendersPage from './pages/TendersPage'
+import MorePortalsPage from './pages/MorePortalsPage'
 import Login from './pages/Login'
 import { useAuth } from './hooks/useAuth'
 import HospitalPage from './pages/HospitalPage'
@@ -21,12 +23,13 @@ function AuthGate() {
 
   return (
     <Routes>
-     <Route element={<Layout />}>
-  <Route index element={<Navigate to="/dashboard" replace />} />
-  <Route path="/dashboard" element={<DashboardPage />} />
-  <Route path="/tenders" element={<TendersPage />} />
-  <Route path="/hospitals" element={<HospitalPage />} />
-</Route>
+      <Route element={<Layout />}>
+        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/tenders" element={<TendersPage />} />
+        <Route path="/more-portals" element={<MorePortalsPage />} />
+        <Route path="/hospitals" element={<HospitalPage />} />
+      </Route>
     </Routes>
   )
 }

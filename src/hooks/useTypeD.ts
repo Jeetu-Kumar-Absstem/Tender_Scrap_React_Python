@@ -2,6 +2,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
+
 interface TypeDStatus {
   running: boolean
   started_at: string | null
@@ -23,7 +25,7 @@ export function useTypeD() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/status')
+      const res = await fetch(`${API_BASE}/api/status`)
       if (!res.ok) {
         console.error('Status fetch failed:', res.status, res.statusText)
         return
@@ -51,7 +53,7 @@ export function useTypeD() {
     setError(null)
     try {
       console.log('[useTypeD] Triggering scraper...')
-      const res = await fetch('/api/run-type-d', { 
+      const res = await fetch(`${API_BASE}/api/run-type-d`, { 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -79,7 +81,7 @@ export function useTypeD() {
 
   const stop = useCallback(async () => {
     try {
-      const res = await fetch('/api/stop-type-d', { method: 'POST' })
+      const res = await fetch(`${API_BASE}/api/stop-type-d`, { method: 'POST' })
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.detail || 'Failed to stop Type D scraper')

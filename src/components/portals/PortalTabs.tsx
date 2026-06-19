@@ -1,7 +1,8 @@
 // src/components/portals/PortalTabs.tsx
 import { clsx } from 'clsx'
 import { Clock } from 'lucide-react'
-import { PORTALS, PortalConfig } from '../../config/portals'
+import type { PortalConfig } from '../../config/portals'
+import { PORTALS } from '../../config/portals'
 
 interface PortalTabsProps {
   activePortal: string

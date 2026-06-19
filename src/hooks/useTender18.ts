@@ -25,9 +25,9 @@ export function useTender18Tenders() {
       console.log('[useTender18] Fetching from tender18_tenders...')
       
       try {
-        const { data, error, count } = await supabase
+        const { data, error } = await supabase
           .from('tender18_tenders')
-          .select('*', { count: 'exact' })
+          .select('*')
           .is('deleted_at', null)
           .order('scraped_at', { ascending: false })
         
@@ -43,7 +43,7 @@ export function useTender18Tenders() {
         throw err
       }
     },
-    refetchInterval: 1000000,
+    refetchInterval: 5000,
     staleTime: 0,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
@@ -82,24 +82,6 @@ export function useTender18Actions() {
     mutationFn: async (id: string) => {
       console.log('[useTender18] Deleting tender:', id)
       
-      // First check if the tender exists
-      const { data: existing, error: checkError } = await supabase
-        .from('tender18_tenders')
-        .select('id')
-        .eq('id', id)
-        .single()
-      
-      if (checkError) {
-        console.error('[useTender18] Tender not found:', checkError)
-        throw new Error('Tender not found')
-      }
-      
-      if (!existing) {
-        console.error('[useTender18] Tender does not exist:', id)
-        throw new Error('Tender does not exist')
-      }
-      
-      // Soft delete by setting deleted_at
       const { data, error } = await supabase
         .from('tender18_tenders')
         .update({ deleted_at: new Date().toISOString() })
@@ -116,9 +98,7 @@ export function useTender18Actions() {
     },
     onSuccess: () => {
       console.log('[useTender18] Invalidating queries after delete...')
-      // Force refetch
       queryClient.invalidateQueries({ queryKey: ['tender18-tenders'] })
-      // Also remove from cache
       queryClient.refetchQueries({ queryKey: ['tender18-tenders'] })
     },
     onError: (error) => {

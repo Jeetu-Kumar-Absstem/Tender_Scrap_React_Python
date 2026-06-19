@@ -3,11 +3,11 @@ import { useState, useMemo } from 'react'
 import { Play, Square, Loader2, CheckCircle2, AlertCircle, Globe, Clock, FileText, TrendingUp, Search, X, Filter, MapPin, RefreshCw } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useTypeD } from '../hooks/useTypeD'
-import { useTender18Tenders, Tender18Tender } from '../hooks/useTender18'
+import { useTender18Tenders, type Tender18Tender } from '../hooks/useTender18'
 import Tender18Card from '../components/tenders/Tender18Card'
 import PortalTabs from '../components/portals/PortalTabs'
 import ComingSoonCard from '../components/portals/ComingSoonCard'
-import { PORTALS, getPortalById, PortalConfig } from '../config/portals'
+import { PORTALS, getPortalById, type PortalConfig } from '../config/portals'
 
 const lufgaRegularStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 400 } as const
 const lufgaSemiboldStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 600 } as const

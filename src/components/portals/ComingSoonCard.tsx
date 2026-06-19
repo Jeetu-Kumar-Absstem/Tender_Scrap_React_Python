@@ -1,6 +1,6 @@
 // src/components/portals/ComingSoonCard.tsx
 import { Clock, Construction } from 'lucide-react'
-import { PortalConfig } from '../../config/portals'
+import type { PortalConfig } from '../../config/portals'
 
 interface ComingSoonCardProps {
   portal: PortalConfig

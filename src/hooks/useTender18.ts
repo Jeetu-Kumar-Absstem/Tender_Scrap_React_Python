@@ -57,11 +57,12 @@ export function useTender18Actions() {
     mutationFn: async ({ id, user_status }: { id: string; user_status: 'active' | 'starred' | 'done' }) => {
       console.log('[useTender18] Updating status:', id, user_status)
       
-      const { data, error } = await (supabase
+      const { data, error } = await supabase
         .from('tender18_tenders')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .update({ user_status } as any)
         .eq('id', id)
-        .select() as any)
+        .select()
       
       if (error) {
         console.error('[useTender18] Update status error:', error)
@@ -83,11 +84,12 @@ export function useTender18Actions() {
     mutationFn: async (id: string) => {
       console.log('[useTender18] Deleting tender:', id)
       
-      const { data, error } = await (supabase
+      const { data, error } = await supabase
         .from('tender18_tenders')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', id)
-        .select() as any)
+        .select()
       
       if (error) {
         console.error('[useTender18] Delete error:', error)

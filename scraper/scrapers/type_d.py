@@ -19,13 +19,7 @@ if sys.platform == 'win32':
         sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')
 
 # --- Imports ---
-try:
-    from scraper.core.schema import INCLUDE_KEYWORDS
-    from scraper.core.supabase_store import _get_client
-    print("[INIT] Successfully imported from scraper.core")
-except ImportError as e:
-    print(f"[WARN] Could not import from scraper.core: {e}")
-    INCLUDE_KEYWORDS = [
+INCLUDE_KEYWORDS = [
         "psa plant", "Oxygen Generation Plant", "oxygen plant", "psa oxygen generation plant",
         "pressure swing adsorption oxygen", "medical oxygen generation plant",
         "oxygen plant sitc", "on-site oxygen generation", "oxygen generator plant",
@@ -34,14 +28,21 @@ except ImportError as e:
         "nitrogen generation plant", "nitrogen plant sitc", "on-site nitrogen generation",
         "nitrogen gas generator", "psa nitrogen", "amc psa oxygen plant",
         "cmc psa oxygen plant", "annual maintenance contract oxygen plant",
-        "camc psa", "comprehensive maintenance contract",
+        "camc psa", "comprehensive maintenance contract psa",
         "preventive maintenance oxygen generator", "service contract psa plant",
         "breakdown maintenance oxygen plant", "psa plant amc", "psa plant cmc",
         "medical gas plant maintenance", "oxygen nitrogen plant service contract",
         "mgps maintenance", "psa plant spare parts", "oxygen plant repair maintenance",
         "vpsa", "liquid oxygen", "lox", "concentrator", "o2 plant",
-        "gas plant", "gas generation"
+        "gas plant", "gas generation","comprehensive maintenance contract oxygen plant",
+        "comprehensive maintenance contract nitrogen plant"
     ]
+try:
+    # from scraper.core.schema import INCLUDE_KEYWORDS
+    from scraper.core.supabase_store import _get_client
+    print("[INIT] Successfully imported from scraper.core")
+except ImportError as e:
+    print(f"[WARN] Could not import from scraper.core: {e}")
 
     def _get_client():
         try:
@@ -62,9 +63,7 @@ BASE_URL   = "https://tender18.com/"
 MAX_PAGES  = 3
 PAGE_DELAY = 2
 
-KEYWORDS = [kw for kw in INCLUDE_KEYWORDS if any(
-    term in kw.lower() for term in ['psa', 'oxygen', 'nitrogen', 'medical', 'gas', 'o2', 'vpsa', 'lox']
-)]
+KEYWORDS = INCLUDE_KEYWORDS
 if not KEYWORDS:
     KEYWORDS = ["psa plant", "oxygen psa plant", "medical oxygen generation plant"]
     print("[WARN] No matching keywords found, using fallback")

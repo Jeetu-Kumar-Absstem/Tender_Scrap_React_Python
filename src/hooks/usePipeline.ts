@@ -1,77 +1,110 @@
-// src/hooks/usePipeline.ts
-import { useState, useEffect, useCallback } from 'react'
-import { triggerPipeline, getPipelineStatus, stopPipeline, type PipelineStatus } from '../lib/pipelineApi'
+// src/hooks/useTender18.ts
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { supabase } from '../lib/supabase'
 
-const KEEP_ALIVE_INTERVAL_MS = 10 * 60 * 1000 // 10 minutes — prevents Render free tier from sleeping
+export interface Tender18Tender {
+  id: string
+  title: string | null
+  reference_number: string | null
+  organization: string | null
+  deadline: string | null
+  estimated_value: string | null
+  location: string | null
+  source_url: string
+  url_hash: string
+  keywords_matched: string[]
+  scraped_at: string
+  deleted_at: string | null
+  user_status: 'active' | 'starred' | 'done'
+}
 
-export function usePipeline() {
-  const [status, setStatus]   = useState<PipelineStatus | null>(null)
-  const [error, setError]     = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  const fetchStatus = useCallback(async () => {
-    try {
-      const s = await getPipelineStatus()
-      setStatus(s)
-    } catch {
-      // API server not running — show offline state
-      setStatus(null)
-    }
-  }, [])
-
-  // Poll every 5s when running
-  useEffect(() => {
-    fetchStatus()
-    const interval = setInterval(fetchStatus, 5000)
-    return () => clearInterval(interval)
-  }, [fetchStatus])
-
-  // Keep-alive ping every 10 minutes to prevent Render free tier cold starts
-  useEffect(() => {
-    const keepAlive = setInterval(() => {
-      getPipelineStatus().catch(() => {}) // silent — just wake the server
-    }, KEEP_ALIVE_INTERVAL_MS)
-    return () => clearInterval(keepAlive)
-  }, [])
-
-  const trigger = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      await triggerPipeline()
-      await fetchStatus()
-    } catch (e: any) {
-      if (e.name === 'AbortError') {
-        // Render cold start took too long — ask user to retry
-        setError('Server is waking up, please try again in a moment.')
-      } else {
-        setError(e.message)
+export function useTender18Tenders() {
+  return useQuery({
+    queryKey: ['tender18-tenders'],
+    queryFn: async () => {
+      console.log('[useTender18] Fetching from tender18_tenders...')
+      
+      try {
+        const { data, error } = await supabase
+          .from('tender18_tenders')
+          .select('*')
+          .is('deleted_at', null)
+          .order('scraped_at', { ascending: false })
+        
+        if (error) {
+          console.error('[useTender18] Supabase error:', error)
+          throw new Error(`Supabase error: ${error.message}`)
+        }
+        
+        console.log('[useTender18] Fetched:', data?.length || 0, 'tenders')
+        return (data ?? []) as Tender18Tender[]
+      } catch (err) {
+        console.error('[useTender18] Fetch error:', err)
+        throw err
       }
-    } finally {
-      setLoading(false)
-    }
-  }, [fetchStatus])
+    },
+    refetchInterval: 5000,
+    staleTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+  })
+}
 
-  const stop = useCallback(async () => {
-    setError(null)
-    try {
-      await stopPipeline()
-      await fetchStatus()
-    } catch (e: any) {
-      if (e.name === 'AbortError') {
-        setError('Request timed out. Please try again.')
-      } else {
-        setError(e.message)
+export function useTender18Actions() {
+  const queryClient = useQueryClient()
+
+  const updateStatus = useMutation({
+    mutationFn: async ({ id, user_status }: { id: string; user_status: 'active' | 'starred' | 'done' }) => {
+      console.log('[useTender18] Updating status:', id, user_status)
+      const { data, error } = await supabase
+        .from('tender18_tenders')
+        .update({ user_status })
+        .eq('id', id)
+        .select()
+      
+      if (error) {
+        console.error('[useTender18] Update status error:', error)
+        throw error
       }
-    }
-  }, [fetchStatus])
+      
+      console.log('[useTender18] Update status success:', data)
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tender18-tenders'] })
+    },
+    onError: (error) => {
+      console.error('[useTender18] Update status error:', error)
+    },
+  })
 
-  return {
-    status,
-    error,
-    loading,
-    isRunning: status?.running ?? false,
-    trigger,
-    stop,
-  }
+  const deleteTender = useMutation({
+    mutationFn: async (id: string) => {
+      console.log('[useTender18] Deleting tender:', id)
+      
+      const { data, error } = await supabase
+        .from('tender18_tenders')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+      
+      if (error) {
+        console.error('[useTender18] Delete error:', error)
+        throw error
+      }
+      
+      console.log('[useTender18] Delete success:', data)
+      return data
+    },
+    onSuccess: () => {
+      console.log('[useTender18] Invalidating queries after delete...')
+      queryClient.invalidateQueries({ queryKey: ['tender18-tenders'] })
+      queryClient.refetchQueries({ queryKey: ['tender18-tenders'] })
+    },
+    onError: (error) => {
+      console.error('[useTender18] Delete error:', error)
+    },
+  })
+
+  return { updateStatus, deleteTender }
 }

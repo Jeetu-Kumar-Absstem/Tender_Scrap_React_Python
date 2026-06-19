@@ -1,7 +1,20 @@
 // src/config/portals.ts
 import { Globe, Building2, FileSearch, Award } from 'lucide-react'
 
-export const PORTALS = [
+export interface PortalConfig {
+  id: string
+  name: string
+  icon: any
+  color: string
+  description: string
+  tableName: string
+  enabled: boolean
+  comingSoon: boolean
+  scraperEndpoint: string
+  statusEndpoint: string
+}
+
+export const PORTALS: PortalConfig[] = [
   {
     id: 'tender18',
     name: 'Tender18.com',
@@ -52,14 +65,14 @@ export const PORTALS = [
   },
 ]
 
-export function getPortalById(id) {
+export const getPortalById = (id: string): PortalConfig | undefined => {
   return PORTALS.find(p => p.id === id)
 }
 
-export function getEnabledPortals() {
+export const getEnabledPortals = (): PortalConfig[] => {
   return PORTALS.filter(p => p.enabled)
 }
 
-export function getActivePortals() {
+export const getActivePortals = (): PortalConfig[] => {
   return PORTALS.filter(p => p.enabled && !p.comingSoon)
 }

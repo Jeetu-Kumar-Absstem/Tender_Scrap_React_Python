@@ -1,13 +1,18 @@
 // src/components/portals/PortalTabs.tsx
 import { clsx } from 'clsx'
 import { Clock } from 'lucide-react'
-import { PORTALS } from '../../config/portals'
+import { PORTALS, PortalConfig } from '../../config/portals'
 
-export default function PortalTabs({ activePortal, onPortalChange }) {
+interface PortalTabsProps {
+  activePortal: string
+  onPortalChange: (portalId: string) => void
+}
+
+export default function PortalTabs({ activePortal, onPortalChange }: PortalTabsProps) {
   return (
     <div className="border-b border-slate-200">
       <nav className="flex gap-1 px-4 overflow-x-auto" aria-label="Portal tabs">
-        {PORTALS.map((portal) => {
+        {PORTALS.map((portal: PortalConfig) => {
           const isActive = activePortal === portal.id
           const isComingSoon = portal.comingSoon
           

@@ -1,7 +1,12 @@
 // src/components/portals/ComingSoonCard.tsx
 import { Clock, Construction } from 'lucide-react'
+import { PortalConfig } from '../../config/portals'
 
-export default function ComingSoonCard({ portal }) {
+interface ComingSoonCardProps {
+  portal: PortalConfig
+}
+
+export default function ComingSoonCard({ portal }: ComingSoonCardProps) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
       <div className="flex justify-center mb-4">

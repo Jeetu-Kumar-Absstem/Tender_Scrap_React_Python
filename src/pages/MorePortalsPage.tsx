@@ -3,20 +3,20 @@ import { useState, useMemo } from 'react'
 import { Play, Square, Loader2, CheckCircle2, AlertCircle, Globe, Clock, FileText, TrendingUp, Search, X, Filter, MapPin, RefreshCw } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useTypeD } from '../hooks/useTypeD'
-import { useTender18Tenders } from '../hooks/useTender18'
+import { useTender18Tenders, Tender18Tender } from '../hooks/useTender18'
 import Tender18Card from '../components/tenders/Tender18Card'
 import PortalTabs from '../components/portals/PortalTabs'
 import ComingSoonCard from '../components/portals/ComingSoonCard'
-import { PORTALS, getPortalById } from '../config/portals'
+import { PORTALS, getPortalById, PortalConfig } from '../config/portals'
 
 const lufgaRegularStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 400 } as const
 const lufgaSemiboldStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 600 } as const
 
 // Extract state from location
-function extractState(location) {
+function extractState(location: string | null): string {
   if (!location) return 'Unknown'
   
-  const states = [
+  const states: string[] = [
     'Andaman', 'Andhra', 'Arunachal', 'Assam', 'Bihar', 'Chandigarh', 
     'Chhattisgarh', 'Dadra', 'Daman', 'Delhi', 'Goa', 'Gujarat', 
     'Haryana', 'Himachal', 'Jammu', 'Jharkhand', 'Karnataka', 'Kerala', 
@@ -37,32 +37,32 @@ function extractState(location) {
 
 export default function MorePortalsPage() {
   // Portal selection
-  const [activePortalId, setActivePortalId] = useState('tender18')
+  const [activePortalId, setActivePortalId] = useState<string>('tender18')
   
   // Get current portal config
-  const currentPortal = getPortalById(activePortalId) || PORTALS[0]
-  const isComingSoon = currentPortal?.comingSoon || false
+  const currentPortal: PortalConfig = getPortalById(activePortalId) || PORTALS[0]
+  const isComingSoon: boolean = currentPortal?.comingSoon || false
   
   // Tender18 hooks
   const { isRunning, loading, error, status, trigger, stop } = useTypeD()
-  const { data: tenders = [], refetch, isLoading, error: fetchError } = useTender18Tenders()
+  const { data: tenders = [], refetch, isLoading } = useTender18Tenders()
   
   // Filters
-  const [keywordFilter, setKeywordFilter] = useState('')
-  const [selectedKeyword, setSelectedKeyword] = useState('all')
-  const [selectedState, setSelectedState] = useState('all')
+  const [keywordFilter, setKeywordFilter] = useState<string>('')
+  const [selectedKeyword, setSelectedKeyword] = useState<string>('all')
+  const [selectedState, setSelectedState] = useState<string>('all')
 
   // Get unique keywords from all tenders
-  const allKeywords = useMemo(() => {
+  const allKeywords: string[] = useMemo(() => {
     return Array.from(
-      new Set(tenders.flatMap(t => t.keywords_matched || []))
+      new Set(tenders.flatMap((t: Tender18Tender) => t.keywords_matched || []))
     ).sort()
   }, [tenders])
 
   // Get unique states from all tenders
-  const allStates = useMemo(() => {
-    const stateSet = new Set()
-    tenders.forEach(t => {
+  const allStates: string[] = useMemo(() => {
+    const stateSet = new Set<string>()
+    tenders.forEach((t: Tender18Tender) => {
       const state = extractState(t.location)
       stateSet.add(state)
     })
@@ -70,10 +70,10 @@ export default function MorePortalsPage() {
   }, [tenders])
 
   // Filter tenders
-  const filteredTenders = useMemo(() => {
+  const filteredTenders: Tender18Tender[] = useMemo(() => {
     if (isComingSoon) return []
     
-    return tenders.filter(t => {
+    return tenders.filter((t: Tender18Tender) => {
       // Keyword filter
       if (selectedKeyword !== 'all' && !(t.keywords_matched || []).includes(selectedKeyword)) {
         return false
@@ -103,7 +103,7 @@ export default function MorePortalsPage() {
 
   const lastResult = status?.last_result
 
-  const handleRunScraper = async () => {
+  const handleRunScraper = async (): Promise<void> => {
     if (isComingSoon) return
     console.log('[MorePortalsPage] Running scraper...')
     await trigger()
@@ -112,12 +112,12 @@ export default function MorePortalsPage() {
     }, 3000)
   }
 
-  const handleRefresh = () => {
+  const handleRefresh = (): void => {
     if (isComingSoon) return
     refetch()
   }
 
-  const handlePortalChange = (portalId) => {
+  const handlePortalChange = (portalId: string): void => {
     setActivePortalId(portalId)
     // Reset filters when switching portals
     setSelectedKeyword('all')
@@ -133,9 +133,6 @@ export default function MorePortalsPage() {
           <h1 className="text-xl font-semibold text-slate-900" style={lufgaSemiboldStyle}>
             More Portals
           </h1>
-          {/* <p className="text-sm text-slate-500 mt-0.5" style={lufgaRegularStyle}>
-            Additional tender portals including Type D scrapers
-          </p> */}
         </div>
         
         <PortalTabs activePortal={activePortalId} onPortalChange={handlePortalChange} />
@@ -151,9 +148,6 @@ export default function MorePortalsPage() {
         <h1 className="text-xl font-semibold text-slate-900" style={lufgaSemiboldStyle}>
           More Portals
         </h1>
-        {/* <p className="text-sm text-slate-500 mt-0.5" style={lufgaRegularStyle}>
-          Additional tender portals including Type D scrapers
-        </p> */}
       </div>
 
       {/* Portal Tabs */}
@@ -292,7 +286,7 @@ export default function MorePortalsPage() {
               style={lufgaRegularStyle}
             >
               <option value="all">All Keywords</option>
-              {allKeywords.map(kw => (
+              {allKeywords.map((kw: string) => (
                 <option key={kw} value={kw}>{kw}</option>
               ))}
             </select>
@@ -309,7 +303,7 @@ export default function MorePortalsPage() {
               style={lufgaRegularStyle}
             >
               <option value="all">All States</option>
-              {allStates.map(state => (
+              {allStates.map((state: string) => (
                 <option key={state} value={state}>{state}</option>
               ))}
             </select>
@@ -373,7 +367,7 @@ export default function MorePortalsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {filteredTenders.map(tender => (
+            {filteredTenders.map((tender: Tender18Tender) => (
               <Tender18Card key={tender.id} tender={tender} />
             ))}
           </div>

@@ -50,12 +50,6 @@ export function useTender18Tenders() {
   })
 }
 
-// Define the update type
-type Tender18Update = {
-  user_status?: 'active' | 'starred' | 'done'
-  deleted_at?: string | null
-}
-
 export function useTender18Actions() {
   const queryClient = useQueryClient()
 
@@ -63,12 +57,11 @@ export function useTender18Actions() {
     mutationFn: async ({ id, user_status }: { id: string; user_status: 'active' | 'starred' | 'done' }) => {
       console.log('[useTender18] Updating status:', id, user_status)
       
-      const updateData: Tender18Update = { user_status }
-      const { data, error } = await supabase
+      const { data, error } = await (supabase
         .from('tender18_tenders')
-        .update(updateData)
+        .update({ user_status } as any)
         .eq('id', id)
-        .select()
+        .select() as any)
       
       if (error) {
         console.error('[useTender18] Update status error:', error)
@@ -90,12 +83,11 @@ export function useTender18Actions() {
     mutationFn: async (id: string) => {
       console.log('[useTender18] Deleting tender:', id)
       
-      const updateData: Tender18Update = { deleted_at: new Date().toISOString() }
-      const { data, error } = await supabase
+      const { data, error } = await (supabase
         .from('tender18_tenders')
-        .update(updateData)
+        .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', id)
-        .select()
+        .select() as any)
       
       if (error) {
         console.error('[useTender18] Delete error:', error)

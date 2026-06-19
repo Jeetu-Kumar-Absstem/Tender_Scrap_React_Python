@@ -1,7 +1,10 @@
 // src/hooks/useTender18.ts
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
-import { Tender18Tender } from '../types/tender18'
+import type { Tender18Tender } from '../types/tender18'
+
+// Re-export so existing imports from this hook file keep working
+export type { Tender18Tender } from '../types/tender18'
 
 // tender18_tenders is not in Supabase generated types, so we escape here once
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

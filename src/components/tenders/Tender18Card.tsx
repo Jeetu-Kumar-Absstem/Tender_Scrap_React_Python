@@ -225,7 +225,7 @@ export default function Tender18Card({ tender }: Props) {
       <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
         <div className="flex items-center gap-1 flex-wrap">
           <Tag size={11} className="text-slate-400" />
-          {(tender.keywords_matched || []).slice(0, 4).map(kw => (
+          {(tender.keywords_matched || []).slice(0, 4).map((kw: string) => (
             <span key={kw} className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium uppercase tracking-wide">
               {kw}
             </span>

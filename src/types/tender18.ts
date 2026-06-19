@@ -1,7 +1,7 @@
 // src/types/tender18.ts
 // Types for tender18_tenders table
 
-import { UserStatus } from './tender'
+import type { UserStatus } from './tender'
 
 export interface Tender18Tender {
   id: string

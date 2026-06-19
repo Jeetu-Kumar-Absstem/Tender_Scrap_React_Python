@@ -50,15 +50,23 @@ export function useTender18Tenders() {
   })
 }
 
+// Define the update type
+type Tender18Update = {
+  user_status?: 'active' | 'starred' | 'done'
+  deleted_at?: string | null
+}
+
 export function useTender18Actions() {
   const queryClient = useQueryClient()
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, user_status }: { id: string; user_status: 'active' | 'starred' | 'done' }) => {
       console.log('[useTender18] Updating status:', id, user_status)
+      
+      const updateData: Tender18Update = { user_status }
       const { data, error } = await supabase
         .from('tender18_tenders')
-        .update({ user_status })
+        .update(updateData)
         .eq('id', id)
         .select()
       
@@ -82,9 +90,10 @@ export function useTender18Actions() {
     mutationFn: async (id: string) => {
       console.log('[useTender18] Deleting tender:', id)
       
+      const updateData: Tender18Update = { deleted_at: new Date().toISOString() }
       const { data, error } = await supabase
         .from('tender18_tenders')
-        .update({ deleted_at: new Date().toISOString() })
+        .update(updateData)
         .eq('id', id)
         .select()
       

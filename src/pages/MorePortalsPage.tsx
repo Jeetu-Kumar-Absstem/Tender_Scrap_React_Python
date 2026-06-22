@@ -1,6 +1,7 @@
 // src/pages/MorePortalsPage.tsx
 import { useState, useMemo } from 'react'
-import { Play, Square, Loader2, CheckCircle2, AlertCircle, Globe, Clock, FileText, TrendingUp, Search, X, Filter, MapPin, RefreshCw } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Play, Square, Loader2, CheckCircle2, AlertCircle, Globe, Clock, FileText, TrendingUp, Search, X, Filter, MapPin, RefreshCw, Archive } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useTypeD } from '../hooks/useTypeD'
 import { useTender18Tenders, type Tender18Tender } from '../hooks/useTender18'
@@ -36,6 +37,8 @@ function extractState(location: string | null): string {
 }
 
 export default function MorePortalsPage() {
+  const navigate = useNavigate()
+
   // Portal selection
   const [activePortalId, setActivePortalId] = useState<string>('tender18')
   
@@ -74,18 +77,13 @@ export default function MorePortalsPage() {
     if (isComingSoon) return []
     
     return tenders.filter((t: Tender18Tender) => {
-      // Keyword filter
       if (selectedKeyword !== 'all' && !(t.keywords_matched || []).includes(selectedKeyword)) {
         return false
       }
-      
-      // State filter
       if (selectedState !== 'all') {
         const state = extractState(t.location)
         if (state !== selectedState) return false
       }
-      
-      // Search filter
       if (keywordFilter) {
         const searchLower = keywordFilter.toLowerCase()
         const match = (
@@ -96,7 +94,6 @@ export default function MorePortalsPage() {
         )
         if (!match) return false
       }
-      
       return true
     })
   }, [tenders, selectedKeyword, selectedState, keywordFilter, isComingSoon])
@@ -119,7 +116,6 @@ export default function MorePortalsPage() {
 
   const handlePortalChange = (portalId: string): void => {
     setActivePortalId(portalId)
-    // Reset filters when switching portals
     setSelectedKeyword('all')
     setSelectedState('all')
     setKeywordFilter('')
@@ -129,10 +125,11 @@ export default function MorePortalsPage() {
   if (isComingSoon) {
     return (
       <div className="p-6 max-w-6xl mx-auto space-y-6">
-        <div>
+        <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-slate-900" style={lufgaSemiboldStyle}>
             More Portals
           </h1>
+          <ArchiveButton onClick={() => navigate('/archive')} />
         </div>
         
         <PortalTabs activePortal={activePortalId} onPortalChange={handlePortalChange} />
@@ -144,10 +141,12 @@ export default function MorePortalsPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
-      <div>
+      {/* Page header */}
+      <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-slate-900" style={lufgaSemiboldStyle}>
           More Portals
         </h1>
+        <ArchiveButton onClick={() => navigate('/archive')} />
       </div>
 
       {/* Portal Tabs */}
@@ -276,7 +275,6 @@ export default function MorePortalsPage() {
             <span className="text-xs text-slate-500" style={lufgaRegularStyle}>Filters:</span>
           </div>
 
-          {/* Keyword filter dropdown */}
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-slate-400">Keyword:</span>
             <select
@@ -292,7 +290,6 @@ export default function MorePortalsPage() {
             </select>
           </div>
 
-          {/* State filter dropdown */}
           <div className="flex items-center gap-1.5">
             <MapPin size={12} className="text-slate-400" />
             <span className="text-xs text-slate-400">State:</span>
@@ -309,7 +306,6 @@ export default function MorePortalsPage() {
             </select>
           </div>
 
-          {/* Search input */}
           <div className="relative flex-1 min-w-[200px]">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -330,14 +326,13 @@ export default function MorePortalsPage() {
             )}
           </div>
 
-          {/* Result count */}
           <span className="text-xs text-slate-400 ml-auto" style={lufgaRegularStyle}>
             {isLoading ? 'Loading...' : `${filteredTenders.length} results`}
           </span>
         </div>
       </div>
 
-      {/* Tenders from current portal */}
+      {/* Tenders */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-slate-900" style={lufgaSemiboldStyle}>
@@ -347,9 +342,7 @@ export default function MorePortalsPage() {
         {isLoading ? (
           <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
             <Loader2 size={32} className="text-blue-500 animate-spin mx-auto mb-3" />
-            <p className="text-sm text-slate-500" style={lufgaRegularStyle}>
-              Loading tenders...
-            </p>
+            <p className="text-sm text-slate-500" style={lufgaRegularStyle}>Loading tenders...</p>
           </div>
         ) : filteredTenders.length === 0 ? (
           <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
@@ -374,5 +367,19 @@ export default function MorePortalsPage() {
         )}
       </div>
     </div>
+  )
+}
+
+// ─── Archive button component ─────────────────────────────────────────────────
+
+function ArchiveButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-2 px-3 py-2 rounded-lg border border-black-400 text-black-700 hover:bg-green-500 hover:border-black-600 transition-colors text-sm bg-cyan-500"
+    >
+      <Archive size={14} className="text-slate-500" />
+      Archive Tenders
+    </button>
   )
 }

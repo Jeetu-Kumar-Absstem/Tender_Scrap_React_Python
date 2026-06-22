@@ -8,6 +8,7 @@ import MorePortalsPage from './pages/MorePortalsPage'
 import Login from './pages/Login'
 import { useAuth } from './hooks/useAuth'
 import HospitalPage from './pages/HospitalPage'
+import ArchivePage from './pages/ArchivePage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,6 +30,7 @@ function AuthGate() {
         <Route path="/tenders" element={<TendersPage />} />
         <Route path="/more-portals" element={<MorePortalsPage />} />
         <Route path="/hospitals" element={<HospitalPage />} />
+        <Route path="/archive" element={<ArchivePage />} />
       </Route>
     </Routes>
   )

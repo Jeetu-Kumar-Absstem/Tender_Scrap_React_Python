@@ -4,6 +4,7 @@ import { ExternalLink, Calendar, MapPin, Building2, Tag, MoreVertical, CheckCirc
 import { format, parseISO, isAfter, startOfDay } from 'date-fns'
 import { clsx } from 'clsx'
 import { useTender18Actions } from '../../hooks/useTender18'
+import { useArchiveTender18Actions } from '../../hooks/useArchiveTender18'
 import type { Tender18Tender } from '../../hooks/useTender18'
 
 interface Props { tender: Tender18Tender }
@@ -65,7 +66,7 @@ function ActionMenu({ tender, onClose, onDeleteClick }: {
         className="w-full flex items-center gap-2 px-3 py-2 hover:bg-red-50 text-left text-red-600"
       >
         <Trash2 size={13} />
-        Delete
+        Archive & Delete
       </button>
     </div>
   )
@@ -80,7 +81,7 @@ function DeleteConfirm({ onConfirm, onCancel, loading }: {
     <div className="mt-3 flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
       <div className="flex items-center gap-2 text-xs text-red-700">
         <AlertTriangle size={13} className="flex-shrink-0" />
-        <span>Delete this tender permanently?</span>
+        <span>Archive and remove this tender?</span>
       </div>
       <div className="flex items-center gap-1.5 flex-shrink-0">
         <button
@@ -95,7 +96,7 @@ function DeleteConfirm({ onConfirm, onCancel, loading }: {
           className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
         >
           {loading ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
-          {loading ? 'Deleting...' : 'Delete'}
+          {loading ? 'Archiving...' : 'Confirm'}
         </button>
       </div>
     </div>
@@ -105,7 +106,7 @@ function DeleteConfirm({ onConfirm, onCancel, loading }: {
 export default function Tender18Card({ tender }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
-  const { deleteTender } = useTender18Actions()
+  const { archiveAndDelete } = useArchiveTender18Actions()
 
   const deadlinePast = tender.deadline
     ? isAfter(startOfDay(new Date()), startOfDay(parseISO(tender.deadline)))
@@ -114,30 +115,32 @@ export default function Tender18Card({ tender }: Props) {
   const isDone = tender.user_status === 'done'
   const isStarred = tender.user_status === 'starred'
 
-  // Auto-delete expired tenders
+  // Auto-archive expired tenders instead of silently deleting them
   useEffect(() => {
     if (deadlinePast) {
-      console.log('[Tender18Card] Auto-deleting expired tender:', tender.id)
-      deleteTender.mutate(tender.id)
+      console.log('[Tender18Card] Auto-archiving expired tender:', tender.id)
+      archiveAndDelete.mutate({ tender, reason: 'expired' })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deadlinePast, tender.id])
 
-  // If expired, don't render
+  // If expired, don't render while archiving
   if (deadlinePast) return null
 
   const handleConfirmDelete = () => {
-    console.log('[Tender18Card] Confirming delete for tender:', tender.id)
-    deleteTender.mutate(tender.id, {
-      onSuccess: () => {
-        console.log('[Tender18Card] Delete successful, closing confirmation')
-        setShowDelete(false)
-        setMenuOpen(false)
-      },
-      onError: (error) => {
-        console.error('[Tender18Card] Delete failed:', error)
-      },
-    })
+    console.log('[Tender18Card] Archiving tender on manual delete:', tender.id)
+    archiveAndDelete.mutate(
+      { tender, reason: 'manual_delete' },
+      {
+        onSuccess: () => {
+          setShowDelete(false)
+          setMenuOpen(false)
+        },
+        onError: (error) => {
+          console.error('[Tender18Card] Archive failed:', error)
+        },
+      }
+    )
   }
 
   return (
@@ -244,7 +247,7 @@ export default function Tender18Card({ tender }: Props) {
         <DeleteConfirm
           onConfirm={handleConfirmDelete}
           onCancel={() => setShowDelete(false)}
-          loading={deleteTender.isPending}
+          loading={archiveAndDelete.isPending}
         />
       )}
     </div>

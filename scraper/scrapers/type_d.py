@@ -16,6 +16,25 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException,
 from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 
+
+INCLUDE_KEYWORDS = [
+        "psa plant", "Oxygen Generation Plant", "oxygen plant", "psa oxygen generation plant",
+        "pressure swing adsorption oxygen", "medical oxygen generation plant", 
+        "oxygen plant sitc", "on-site oxygen generation", "oxygen generator plant",
+        "oxygen gas generator", "psa oxygen", "psa nitrogen plant", 
+        "psa nitrogen generator", "pressure swing adsorption nitrogen",
+        "nitrogen generation plant", "nitrogen plant sitc", "on-site nitrogen generation",
+        "nitrogen gas generator", "psa nitrogen", "amc psa oxygen plant",
+        "cmc psa oxygen plant", "annual maintenance contract oxygen plant",
+        "camc psa", "comprehensive maintenance contract psa", 
+        "preventive maintenance oxygen generator", "service contract psa plant",
+        "breakdown maintenance oxygen plant", "psa plant amc", "psa plant cmc",
+        "medical gas plant maintenance", "oxygen nitrogen plant service contract",
+        "mgps maintenance", "psa plant spare parts", "oxygen plant repair maintenance",
+        "vpsa", "liquid oxygen", "lox", "concentrator", "o2 plant", 
+        "gas plant", "gas generation","comprehensive maintenance contract oxygen plant",
+        "comprehensive maintenance contract psa nitrogen plant"
+    ]
 # Fix Windows console encoding issues
 if sys.platform == 'win32':
     try:
@@ -26,29 +45,12 @@ if sys.platform == 'win32':
 
 # --- Try to import from schema, with fallback ---
 try:
-    from scraper.core.schema import INCLUDE_KEYWORDS
+    # from scraper.core.schema import INCLUDE_KEYWORDS
     from scraper.core.supabase_store import _get_client
     print(f"[INIT] Successfully imported from scraper.core")
 except ImportError as e:
     print(f"[WARN] Could not import from scraper.core: {e}")
     # Fallback keywords
-    INCLUDE_KEYWORDS = [
-        "psa plant", "Oxygen Generation Plant", "oxygen plant", "psa oxygen generation plant",
-        "pressure swing adsorption oxygen", "medical oxygen generation plant", 
-        "oxygen plant sitc", "on-site oxygen generation", "oxygen generator plant",
-        "oxygen gas generator", "psa oxygen", "psa nitrogen plant", 
-        "psa nitrogen generator", "pressure swing adsorption nitrogen",
-        "nitrogen generation plant", "nitrogen plant sitc", "on-site nitrogen generation",
-        "nitrogen gas generator", "psa nitrogen", "amc psa oxygen plant",
-        "cmc psa oxygen plant", "annual maintenance contract oxygen plant",
-        "camc psa", "comprehensive maintenance contract", 
-        "preventive maintenance oxygen generator", "service contract psa plant",
-        "breakdown maintenance oxygen plant", "psa plant amc", "psa plant cmc",
-        "medical gas plant maintenance", "oxygen nitrogen plant service contract",
-        "mgps maintenance", "psa plant spare parts", "oxygen plant repair maintenance",
-        "vpsa", "liquid oxygen", "lox", "concentrator", "o2 plant", 
-        "gas plant", "gas generation"
-    ]
     
     def _get_client():
         try:
@@ -72,10 +74,7 @@ PAGE_LOAD_DELAY = 2
 MAX_PAGES = 3  # Number of pages to scrape per keyword
 
 # Use keywords from schema - filter for PSA related
-KEYWORDS = [kw for kw in INCLUDE_KEYWORDS if any(
-    term in kw.lower() for term in ['psa', 'oxygen', 'nitrogen', 'medical', 'gas', 'o2', 'vpsa', 'lox']
-)]
-
+KEYWORDS = INCLUDE_KEYWORDS
 if not KEYWORDS:
     KEYWORDS = ["psa plant", "oxygen psa plant", "medical oxygen generation plant"]
     print("[WARN] No matching keywords found, using fallback")
@@ -518,6 +517,109 @@ def save_to_tender18_table(tender_data_list):
     
     return saved_count
 
+def archive_expired_tenders(client):
+    """
+    After every pipeline run, move all expired tenders (deadline < today)
+    from tender18_tenders into archive_tender18_tenders, then soft-delete them.
+
+    Duplicate-safe: skips any tender whose original_id already exists in the
+    archive table, so running the pipeline multiple times never creates double
+    archive rows.
+    """
+    if client is None:
+        print("[ARCHIVE] No Supabase client — skipping archive sweep.")
+        return 0
+
+    today = datetime.now(timezone.utc).date().isoformat()   # e.g. "2025-06-19"
+    print(f"\n[ARCHIVE] Starting expired-tender sweep (today = {today})...")
+
+    # ── 1. Fetch all live tenders whose deadline has passed ──────────────────
+    try:
+        res = client.table("tender18_tenders") \
+            .select("*") \
+            .lt("deadline", today) \
+            .is_("deleted_at", "null") \
+            .execute()
+        expired = res.data or []
+    except Exception as e:
+        print(f"[ARCHIVE] Failed to fetch expired tenders: {e}")
+        return 0
+
+    if not expired:
+        print("[ARCHIVE] No expired tenders found — nothing to archive.")
+        return 0
+
+    print(f"[ARCHIVE] Found {len(expired)} expired tender(s) to archive.")
+
+    # ── 2. Fetch original_ids already in the archive (for duplicate check) ───
+    try:
+        existing_res = client.table("archive_tender18_tenders") \
+            .select("original_id") \
+            .execute()
+        already_archived = {
+            row["original_id"]
+            for row in (existing_res.data or [])
+        }
+    except Exception as e:
+        print(f"[ARCHIVE] Could not fetch existing archive ids: {e}")
+        already_archived = set()
+
+    # ── 3. Archive each expired tender ───────────────────────────────────────
+    archived_count = 0
+    skipped_count  = 0
+
+    for tender in expired:
+        tender_id = tender.get("id")
+
+        # Skip if already archived (idempotency guard)
+        if tender_id in already_archived:
+            print(f"   [SKIP] Already archived: {tender.get('title', tender_id)[:60]}")
+            skipped_count += 1
+            continue
+
+        archive_row = {
+            "original_id":      tender_id,
+            "title":            tender.get("title"),
+            "reference_number": tender.get("reference_number"),
+            "organization":     tender.get("organization"),
+            "location":         tender.get("location"),
+            "deadline":         tender.get("deadline"),
+            "estimated_value":  tender.get("estimated_value"),
+            "source_url":       tender.get("source_url"),
+            "keywords_matched": tender.get("keywords_matched", []),
+            "user_status":      tender.get("user_status", "active"),
+            "scraped_at":       tender.get("scraped_at"),
+            "archived_at":      datetime.now(timezone.utc).isoformat(),
+            "archive_reason":   "pipeline_cleanup",
+        }
+
+        try:
+            # Insert into archive
+            ins = client.table("archive_tender18_tenders").insert(archive_row).execute()
+            if not (ins.data and len(ins.data) > 0):
+                print(f"   [WARN] Archive insert returned no data for: {tender_id}")
+                continue
+
+            # Soft-delete from main table
+            client.table("tender18_tenders") \
+                .update({"deleted_at": datetime.now(timezone.utc).isoformat()}) \
+                .eq("id", tender_id) \
+                .execute()
+
+            archived_count += 1
+            print(f"   [OK] Archived: {tender.get('title', tender_id)[:60]}")
+
+        except Exception as e:
+            print(f"   [ERROR] Failed to archive tender {tender_id}: {e}")
+
+    print(
+        f"[ARCHIVE] Done — {archived_count} archived, "
+        f"{skipped_count} already in archive, "
+        f"{len(expired) - archived_count - skipped_count} failed."
+    )
+    return archived_count
+
+
 def scrape_keyword_with_pagination(keyword, max_pages=MAX_PAGES):
     """Scrape a single keyword with pagination support."""
     all_results = []
@@ -656,7 +758,13 @@ if all_scraped_data:
     # Save to tender18_tenders table (or CSV as fallback)
     saved = save_to_tender18_table(unique_list)
     print(f"[OK] Saved {saved} tenders to database.")
-    
+
+    # Archive expired tenders immediately after insert so the frontend
+    # never sees them and they are never lost.
+    archive_client = _get_client()
+    archived = archive_expired_tenders(archive_client)
+    print(f"[OK] Archived {archived} expired tender(s) from database.")
+
     # Print sample
     print("\n[Sample of scraped data:]")
     for i, item in enumerate(unique_list[:5]):

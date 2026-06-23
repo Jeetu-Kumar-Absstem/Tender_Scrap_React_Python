@@ -3,6 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import type { GemTender } from '../types/gemTender'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = supabase as any
+
 export interface ArchivedGemTender extends GemTender {
   original_id: string
   archived_at: string
@@ -10,7 +13,7 @@ export interface ArchivedGemTender extends GemTender {
 }
 
 async function fetchArchiveGemTenders(): Promise<ArchivedGemTender[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('archive_gem_tenders')
     .select('*')
     .order('archived_at', { ascending: false })
@@ -45,7 +48,7 @@ export function useArchiveGemActions() {
       console.log('[useArchiveGem] Archiving tender:', tender.id, 'reason:', reason)
 
       // ── 1. Check if already archived ──────────────────────────────────────
-      const { data: existing, error: checkError } = await supabase
+      const { data: existing, error: checkError } = await db
         .from('archive_gem_tenders')
         .select('id')
         .eq('original_id', tender.id)
@@ -60,9 +63,9 @@ export function useArchiveGemActions() {
         console.log('[useArchiveGem] Tender already archived, skipping insert:', tender.id)
         // Still soft-delete from main table if not already deleted
         if (!tender.deleted_at) {
-          const { error: deleteError } = await supabase
+          const { error: deleteError } = await db
             .from('gem_tenders')
-            .update({ deleted_at: new Date().toISOString() } as any)
+            .update({ deleted_at: new Date().toISOString() })
             .eq('id', tender.id)
 
           if (deleteError) {
@@ -90,16 +93,16 @@ export function useArchiveGemActions() {
         archive_reason: reason,
       }
 
-      const { error: archiveError } = await supabase
+      const { error: archiveError } = await db
         .from('archive_gem_tenders')
-        .insert(archiveRow as any)
+        .insert(archiveRow)
 
       if (archiveError) throw new Error(`Archive insert failed: ${archiveError.message}`)
 
       // ── 3. Soft delete from main table ────────────────────────────────────
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await db
         .from('gem_tenders')
-        .update({ deleted_at: new Date().toISOString() } as any)
+        .update({ deleted_at: new Date().toISOString() })
         .eq('id', tender.id)
 
       if (deleteError) throw new Error(`Soft delete failed: ${deleteError.message}`)
@@ -121,7 +124,7 @@ export function useDeleteArchiveGemTender() {
   
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from('archive_gem_tenders')
         .delete()
         .eq('id', id)

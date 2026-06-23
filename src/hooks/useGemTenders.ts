@@ -5,8 +5,11 @@ import type { GemTender } from '../types/gemTender'
 
 export type { GemTender }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const db = supabase as any
+
 async function fetchGemTenders(): Promise<GemTender[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('gem_tenders')
     .select('*')
     .is('deleted_at', null)
@@ -20,12 +23,11 @@ export function useGemTenders() {
   return useQuery({
     queryKey: ['gem-tenders'],
     queryFn: fetchGemTenders,
-    // Cache for 24 hours - data only changes when scraper runs
-    staleTime: Infinity, // Never stale on its own
-    gcTime: 1000 * 60 * 60 * 24, // Keep in cache for 24 hours
-    refetchOnMount: false, // Don't refetch on mount
-    refetchOnWindowFocus: false, // Don't refetch on window focus
-    refetchOnReconnect: false, // Don't refetch on reconnect
+    staleTime: Infinity,
+    gcTime: 1000 * 60 * 60 * 24,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 }
 
@@ -34,9 +36,9 @@ export function useGemTendersActions() {
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, user_status }: { id: string; user_status: 'active' | 'done' | 'starred' }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from('gem_tenders')
-        .update({ user_status } as any)
+        .update({ user_status })
         .eq('id', id)
 
       if (error) throw new Error(error.message)
@@ -78,16 +80,16 @@ export function useArchiveGemActions() {
         archive_reason: reason,
       }
 
-      const { error: archiveError } = await supabase
+      const { error: archiveError } = await db
         .from('archive_gem_tenders')
-        .insert(archiveRow as any)
+        .insert(archiveRow)
 
       if (archiveError) throw new Error(`Archive insert failed: ${archiveError.message}`)
 
       // 2. Soft delete from main table
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await db
         .from('gem_tenders')
-        .update({ deleted_at: new Date().toISOString() } as any)
+        .update({ deleted_at: new Date().toISOString() })
         .eq('id', tender.id)
 
       if (deleteError) throw new Error(`Soft delete failed: ${deleteError.message}`)

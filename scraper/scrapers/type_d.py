@@ -22,7 +22,7 @@ INCLUDE_KEYWORDS = [
         "pressure swing adsorption oxygen", "medical oxygen generation plant", 
         "oxygen plant sitc", "on-site oxygen generation", "oxygen generator plant",
         "oxygen gas generator", "psa oxygen", "psa nitrogen plant", 
-        "psa nitrogen generator", "pressure swing adsorption nitrogen",
+        "nitrogen generator", "pressure swing adsorption nitrogen",
         "nitrogen generation plant", "nitrogen plant sitc", "on-site nitrogen generation",
         "nitrogen gas generator", "psa nitrogen", "amc psa oxygen plant",
         "cmc psa oxygen plant", "annual maintenance contract oxygen plant",
@@ -31,9 +31,11 @@ INCLUDE_KEYWORDS = [
         "breakdown maintenance oxygen plant", "psa plant amc", "psa plant cmc",
         "medical gas plant maintenance", "oxygen nitrogen plant service contract",
         "mgps maintenance", "psa plant spare parts", "oxygen plant repair maintenance",
-        "vpsa", "liquid oxygen", "lox", "concentrator", "o2 plant", 
-        "gas plant", "gas generation","comprehensive maintenance contract oxygen plant",
-        "comprehensive maintenance contract psa nitrogen plant"
+        "vpsa", "liquid oxygen", "lox", "Oxygen concentrator", "o2 plant", 
+        "Nitrogen concentrator","oxygen gas plant","camc of oxygen plant","camc of nitrogen plant",
+        "Nitrogen gas plant", "gas generation","comprehensive maintenance contract oxygen plant",
+        "comprehensive maintenance contract psa nitrogen plant",
+        "nitrogen generator"
     ]
 # Fix Windows console encoding issues
 if sys.platform == 'win32':

@@ -82,6 +82,18 @@ interface TypeDRunState {
   } | null
 }
 
+interface TypeCRunState {
+  running:     boolean
+  started_at:  string | null
+  last_result: {
+    success:     boolean
+    finished_at: string
+    exit_code:   number
+    status:      'completed' | 'failed' | 'interrupted'
+    error?:      string
+  } | null
+}
+
 const state: RunState = {
   running:     false,
   started_at:  null,
@@ -94,8 +106,15 @@ const typeDState: TypeDRunState = {
   last_result: null,
 }
 
+const typeCState: TypeCRunState = {
+  running:     false,
+  started_at:  null,
+  last_result: null,
+}
+
 let activeProcess: ChildProcess | null = null
 let typeDProcess: ChildProcess | null = null
+let typeCProcess: ChildProcess | null = null
 
 // ─── Log buffer & SSE clients ────────────────────────────────
 interface LogLine {
@@ -129,7 +148,8 @@ app.get('/health', (_req: Request, res: Response) => {
 app.get('/api/status', (_req: Request, res: Response) => {
   res.json({ 
     pipeline: state,
-    typeD: typeDState
+    typeD: typeDState,
+    typeC: typeCState
   })
 })
 
@@ -150,6 +170,8 @@ app.get('/api/logs', (req: Request, res: Response) => {
     sseClients.delete(res)
   })
 })
+
+// ─── Pipeline (Main) Endpoints ──────────────────────────────
 
 app.post('/api/run', (_req: Request, res: Response) => {
   if (state.running) {
@@ -241,7 +263,8 @@ app.post('/api/stop', (_req: Request, res: Response) => {
   res.json({ message: 'Pipeline interrupted' })
 })
 
-// ─── Type D Scraper Endpoints ────────────────────────────────
+// ─── Type D (Tender18) Scraper Endpoints ────────────────────
+
 app.post('/api/run-type-d', (_req: Request, res: Response) => {
   console.log('[server] Received POST /api/run-type-d')
   
@@ -342,6 +365,110 @@ app.post('/api/stop-type-d', (_req: Request, res: Response) => {
   res.json({ message: 'Type D scraper interrupted' })
 })
 
+// ─── Type C (GeM BidPlus) Scraper Endpoints ────────────────
+
+app.post('/api/run-type-c', (_req: Request, res: Response) => {
+  console.log('[server] Received POST /api/run-type-c')
+  
+  if (typeCState.running) {
+    console.log('[server] Type C scraper already running')
+    res.status(409).json({ detail: 'Type C scraper already running' })
+    return
+  }
+
+  typeCState.running    = true
+  typeCState.started_at = new Date().toISOString()
+  typeCState.last_result = null
+  pushLog('sys', `▶ Type C (GeM BidPlus) scraper started at ${typeCState.started_at}`)
+
+  const pythonModule = 'scraper.scrapers.type_c'
+  console.log(`[server] Starting Python module: ${pythonModule}`)
+  console.log(`[server] Working directory: ${ROOT_DIR}`)
+
+  typeCProcess = spawn(
+    PYTHON_EXE,
+    ['-m', pythonModule],
+    {
+      cwd:   ROOT_DIR,
+      env: {
+        ...process.env,
+        PYTHONUNBUFFERED: '1',
+        PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH ?? '',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }
+  )
+
+  console.log(`[server] Python process started with PID: ${typeCProcess.pid}`)
+
+  typeCProcess.stdout?.on('data', (chunk: Buffer) => {
+    const text = chunk.toString()
+    process.stdout.write(`[type-c] ${text}`)
+    pushLog('out', text)
+  })
+
+  typeCProcess.stderr?.on('data', (chunk: Buffer) => {
+    const text = chunk.toString()
+    process.stderr.write(`[type-c:err] ${text}`)
+    pushLog('err', text)
+  })
+
+  typeCProcess.on('close', (code: number | null) => {
+    const success = code === 0
+    console.log(`[server] Type C scraper finished. Exit code: ${code}`)
+    pushLog('sys', `■ Type C scraper finished — exit code ${code}`)
+    typeCState.running     = false
+    typeCState.last_result = {
+      success,
+      exit_code:   code ?? -1,
+      finished_at: new Date().toISOString(),
+      status:      success ? 'completed' : 'failed',
+    }
+    typeCProcess = null
+  })
+
+  typeCProcess.on('error', (err: Error) => {
+    console.error(`[server] Failed to start Type C scraper: ${err.message}`)
+    pushLog('err', `Failed to start Type C scraper: ${err.message}`)
+    typeCState.running     = false
+    typeCState.last_result = {
+      success:     false,
+      exit_code:   -1,
+      finished_at: new Date().toISOString(),
+      status:      'failed',
+      error:       err.message,
+    }
+    typeCProcess = null
+  })
+
+  res.json({
+    message:    'Type C scraper started',
+    started_at: typeCState.started_at,
+    python:     PYTHON_EXE,
+  })
+})
+
+app.post('/api/stop-type-c', (_req: Request, res: Response) => {
+  console.log('[server] Received POST /api/stop-type-c')
+  
+  if (!typeCState.running || !typeCProcess) {
+    res.status(400).json({ detail: 'No Type C scraper running' })
+    return
+  }
+  typeCProcess.kill('SIGTERM')
+  pushLog('sys', '⛔ Type C scraper stopped by user')
+  typeCState.running = false
+  typeCState.last_result = {
+    success:     false,
+    exit_code:   -1,
+    finished_at: new Date().toISOString(),
+    status:      'interrupted',
+  }
+  res.json({ message: 'Type C scraper interrupted' })
+})
+
+// ─── Start Server ─────────────────────────────────────────────
+
 app.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`✅ TenderPulse server running at http://localhost:${PORT}`)
   console.log(`   Python: ${PYTHON_EXE}`)
@@ -351,8 +478,11 @@ app.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`   GET  /api/logs            → SSE log stream`)
   console.log(`   GET  /health              → health check`)
   console.log(`── Type D endpoints ────────────────────────`)
-  console.log(`   POST /api/run-type-d      → trigger Type D scraper`)
+  console.log(`   POST /api/run-type-d      → trigger Type D (Tender18) scraper`)
   console.log(`   POST /api/stop-type-d     → stop Type D scraper`)
+  console.log(`── Type C endpoints ────────────────────────`)
+  console.log(`   POST /api/run-type-c      → trigger Type C (GeM BidPlus) scraper`)
+  console.log(`   POST /api/stop-type-c     → stop Type C scraper`)
   console.log(`── Hospital endpoints ──────────────────────`)
   console.log(`   POST /api/hospitals/scrape  → scrape Haryana hospitals`)
   console.log(`   GET  /api/hospitals/cities  → city dropdown (NABH proxy)`)

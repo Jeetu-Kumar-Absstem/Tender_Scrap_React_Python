@@ -37,8 +37,12 @@ export function useArchiveTender18Tenders() {
       console.log('[useArchiveTender18] Fetched:', data?.length ?? 0, 'archived tenders')
       return (data ?? []) as ArchivedTender[]
     },
-    staleTime: 30_000,
+    // Cache for 24 hours - archive only changes when tenders are archived
+    staleTime: Infinity,
+    gcTime: 1000 * 60 * 60 * 24,
+    refetchOnMount: false,
     refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 }
 
@@ -59,7 +63,36 @@ export function useArchiveTender18Actions() {
     }) => {
       console.log('[useArchiveTender18] Archiving tender:', tender.id, 'reason:', reason)
 
-      // 1. Insert into archive
+      // ── 1. Check if already archived ──────────────────────────────────────
+      const { data: existing, error: checkError } = await db
+        .from('archive_tender18_tenders')
+        .select('id')
+        .eq('original_id', tender.id)
+        .maybeSingle()
+
+      if (checkError) {
+        console.error('[useArchiveTender18] Check error:', checkError)
+        throw new Error(`Archive check failed: ${checkError.message}`)
+      }
+
+      if (existing) {
+        console.log('[useArchiveTender18] Tender already archived, skipping insert:', tender.id)
+        // Still soft-delete from main table if not already deleted
+        if (!tender.deleted_at) {
+          const { error: deleteError } = await db
+            .from('tender18_tenders')
+            .update({ deleted_at: new Date().toISOString() })
+            .eq('id', tender.id)
+
+          if (deleteError) {
+            console.error('[useArchiveTender18] Delete error:', deleteError)
+            throw new Error(`Main table delete failed: ${deleteError.message}`)
+          }
+        }
+        return tender.id
+      }
+
+      // ── 2. Insert into archive ──────────────────────────────────────────
       const archiveRow = {
         original_id:      tender.id,
         title:            tender.title,
@@ -85,7 +118,7 @@ export function useArchiveTender18Actions() {
         throw new Error(`Archive insert failed: ${insertError.message}`)
       }
 
-      // 2. Soft-delete from main table
+      // ── 3. Soft-delete from main table ──────────────────────────────────
       const { error: deleteError } = await db
         .from('tender18_tenders')
         .update({ deleted_at: new Date().toISOString() })
@@ -100,6 +133,7 @@ export function useArchiveTender18Actions() {
       return tender.id
     },
     onSuccess: () => {
+      // Invalidate both main and archive caches
       queryClient.invalidateQueries({ queryKey: ['tender18-tenders'] })
       queryClient.invalidateQueries({ queryKey: ['archive-tender18-tenders'] })
     },

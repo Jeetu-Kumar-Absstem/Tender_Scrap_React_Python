@@ -33,18 +33,41 @@ export function useTypeD() {
       const typeDStatus = data?.typeD || { running: false, started_at: null, last_result: null }
       setStatus(typeDStatus)
       setIsRunning(typeDStatus.running || false)
+      
+      // If scraper just finished, invalidate tender data
+      if (!typeDStatus.running && typeDStatus.last_result) {
+        queryClient.invalidateQueries({ queryKey: ['tender18-tenders'] })
+      }
     } catch (err) {
       console.error('Error fetching Type D status:', err)
       setStatus({ running: false, started_at: null, last_result: null })
       setIsRunning(false)
     }
-  }, [])
+  }, [queryClient])
 
   useEffect(() => {
     fetchStatus()
-    const interval = setInterval(fetchStatus, 2000)
-    return () => clearInterval(interval)
-  }, [fetchStatus])
+    // Poll every 2 seconds only while running
+    let interval: NodeJS.Timeout | null = null
+    
+    const checkAndPoll = () => {
+      if (isRunning) {
+        if (!interval) {
+          interval = setInterval(fetchStatus, 2000)
+        }
+      } else {
+        if (interval) {
+          clearInterval(interval)
+          interval = null
+        }
+      }
+    }
+    
+    checkAndPoll()
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [fetchStatus, isRunning])
 
   const trigger = useCallback(async () => {
     setLoading(true)
@@ -68,6 +91,7 @@ export function useTypeD() {
       const data = await res.json()
       console.log('[useTypeD] Scraper started:', data)
       await fetchStatus()
+      // Invalidate cache immediately to show loading state
       queryClient.invalidateQueries({ queryKey: ['tender18-tenders'] })
     } catch (err) {
       console.error('[useTypeD] Error:', err)

@@ -35,10 +35,12 @@ export function useTender18Tenders() {
         throw err
       }
     },
-    refetchInterval: 5000,
-    staleTime: 0,
-    refetchOnMount: true,
-    refetchOnWindowFocus: true,
+    // Cache for 24 hours - data only changes when scraper runs
+    staleTime: Infinity, // Never stale on its own
+    gcTime: 1000 * 60 * 60 * 24, // Keep in cache for 24 hours
+    refetchOnMount: false, // Don't refetch on mount
+    refetchOnWindowFocus: false, // Don't refetch on window focus
+    refetchOnReconnect: false, // Don't refetch on reconnect
   })
 }
 
@@ -64,6 +66,7 @@ export function useTender18Actions() {
       return data
     },
     onSuccess: () => {
+      // Invalidate cache so data refreshes with new status
       queryClient.invalidateQueries({ queryKey: ['tender18-tenders'] })
     },
     onError: (error) => {
@@ -92,7 +95,6 @@ export function useTender18Actions() {
     onSuccess: () => {
       console.log('[useTender18] Invalidating queries after delete...')
       queryClient.invalidateQueries({ queryKey: ['tender18-tenders'] })
-      queryClient.refetchQueries({ queryKey: ['tender18-tenders'] })
     },
     onError: (error) => {
       console.error('[useTender18] Delete error:', error)

@@ -34,8 +34,9 @@ export function useTypeC() {
   const { data: status, refetch: refetchStatus } = useQuery({
     queryKey: ['type-c-status'],
     queryFn: fetchTypeCStatus,
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
       // Refetch every 2 seconds while running
+      const data = (query as any).state?.data as TypeCStatusResponse | undefined
       if (data?.typeC?.running) {
         return 2000
       }

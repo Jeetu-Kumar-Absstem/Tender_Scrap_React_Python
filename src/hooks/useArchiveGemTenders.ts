@@ -62,7 +62,7 @@ export function useArchiveGemActions() {
         if (!tender.deleted_at) {
           const { error: deleteError } = await supabase
             .from('gem_tenders')
-            .update({ deleted_at: new Date().toISOString() })
+            .update({ deleted_at: new Date().toISOString() } as any)
             .eq('id', tender.id)
 
           if (deleteError) {
@@ -92,14 +92,14 @@ export function useArchiveGemActions() {
 
       const { error: archiveError } = await supabase
         .from('archive_gem_tenders')
-        .insert(archiveRow)
+        .insert(archiveRow as any)
 
       if (archiveError) throw new Error(`Archive insert failed: ${archiveError.message}`)
 
       // ── 3. Soft delete from main table ────────────────────────────────────
       const { error: deleteError } = await supabase
         .from('gem_tenders')
-        .update({ deleted_at: new Date().toISOString() })
+        .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', tender.id)
 
       if (deleteError) throw new Error(`Soft delete failed: ${deleteError.message}`)

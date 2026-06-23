@@ -36,7 +36,7 @@ export function useGemTendersActions() {
     mutationFn: async ({ id, user_status }: { id: string; user_status: 'active' | 'done' | 'starred' }) => {
       const { error } = await supabase
         .from('gem_tenders')
-        .update({ user_status })
+        .update({ user_status } as any)
         .eq('id', id)
 
       if (error) throw new Error(error.message)
@@ -80,14 +80,14 @@ export function useArchiveGemActions() {
 
       const { error: archiveError } = await supabase
         .from('archive_gem_tenders')
-        .insert(archiveRow)
+        .insert(archiveRow as any)
 
       if (archiveError) throw new Error(`Archive insert failed: ${archiveError.message}`)
 
       // 2. Soft delete from main table
       const { error: deleteError } = await supabase
         .from('gem_tenders')
-        .update({ deleted_at: new Date().toISOString() })
+        .update({ deleted_at: new Date().toISOString() } as any)
         .eq('id', tender.id)
 
       if (deleteError) throw new Error(`Soft delete failed: ${deleteError.message}`)

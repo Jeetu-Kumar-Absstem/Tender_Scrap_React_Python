@@ -7,7 +7,7 @@ import {
   RefreshCw, Archive, RotateCcw, Calendar, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { clsx } from 'clsx'
-import { format, parseISO, isWithinInterval } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 import { useTypeD } from '../hooks/useTypeD'
 import { useTypeC } from '../hooks/useTypeC'
 import { useTender18Tenders, type Tender18Tender } from '../hooks/useTender18'
@@ -44,7 +44,6 @@ export default function MorePortalsPage() {
 
   // Determine which hook to use based on active portal
   const isTender18 = activePortalId === 'tender18'
-  const isGem = activePortalId === 'gem'
 
   const { isRunning, loading, error, status, trigger, stop } = isTender18 ? typeD : typeC
   const tenders = isTender18 ? tender18Tenders : gemTenders

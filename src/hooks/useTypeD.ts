@@ -48,7 +48,7 @@ export function useTypeD() {
   useEffect(() => {
     fetchStatus()
     // Poll every 2 seconds only while running
-    let interval: NodeJS.Timeout | null = null
+    let interval: ReturnType<typeof setInterval> | null = null
     
     const checkAndPoll = () => {
       if (isRunning) {

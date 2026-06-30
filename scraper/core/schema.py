@@ -45,7 +45,7 @@ INCLUDE_KEYWORDS: list[str] =[
     
     # From AMC / CMC - PSA
     "amc psa oxygen plant", "cmc psa oxygen plant", "annual maintenance contract oxygen plant",
-    "camc psa", "comprehensive maintenance contract", "preventive maintenance oxygen generator",
+    "camc psa", "comprehensive maintenance contract psa", "preventive maintenance oxygen generator",
     "service contract psa plant", "breakdown maintenance oxygen plant",
     
     # From Other
@@ -54,7 +54,8 @@ INCLUDE_KEYWORDS: list[str] =[
     "psa plant spare parts", "oxygen plant repair maintenance",
     
     # Additional from your INCLUDE_KEYWORDS (merged where applicable)
-    "vpsa", "liquid oxygen", "lox", "concentrator", "o2 plant", "gas plant", "gas generation"
+    "vpsa", "liquid oxygen", "lox", "oxygen concentrator", "o2 plant", "oxygen gas plant", "gas generation"
+    , "nitrogen gas plant","nitrogen concentrator","camc of nitrogen plant","camc of oxygen plant"
 ]
 
 REJECT_KEYWORDS: list[str] = [

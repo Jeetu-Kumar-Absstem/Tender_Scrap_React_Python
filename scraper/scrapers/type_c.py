@@ -1,51 +1,67 @@
 """
-scraper/scrapers/type_c.py
-GeM BidPlus scraper for https://bidplus.gem.gov.in/all-bids#
-
-Independent scraper like type_d.py - self-contained with its own keywords.
+type_c.py
+GeM Tender Scraper with Supabase Integration
+- OPTIMIZED: ONE search per category using CATEGORY NAME
+- Each PDF downloaded once and checked against ALL keywords
+- Priority matching: First matching keyword (in priority order) is saved
+- No re-searching, no re-downloading, no restarting from page 1
+- Multiple PDF library support
+- Supabase integration with CSV fallback
 """
 
 import asyncio
-import random
-import re
-import sys
-import os
 import csv
 import hashlib
+import io
+import logging
+import os
+import re
+import sys
+import time
 from datetime import datetime, timezone
-from typing import Optional
-from urllib.parse import urljoin
+from pathlib import Path
+from urllib.parse import urljoin, urlparse
 
-import structlog
-from playwright.async_api import Browser, BrowserContext, Page, async_playwright
+import requests
+from playwright.async_api import async_playwright
 
-# ─── Keywords (independent, like type_d.py) ──────────────────────────────────
+# ─── Force UTF-8 Encoding ──────────────────────────────────────────────
 
-INCLUDE_KEYWORDS = [
-    "psa plant", "Oxygen Generation Plant", "oxygen plant", "psa oxygen generation plant",
-    "pressure swing adsorption oxygen", "medical oxygen generation plant",
-    "oxygen plant sitc", "on-site oxygen generation", "oxygen generator plant",
-    "oxygen gas generator", "psa oxygen", "psa nitrogen plant",
-    "psa nitrogen generator", "pressure swing adsorption nitrogen",
-    "nitrogen generation plant", "nitrogen plant sitc", "on-site nitrogen generation",
-    "nitrogen gas generator", "psa nitrogen", "amc psa oxygen plant",
-    "cmc psa oxygen plant", "annual maintenance contract oxygen plant",
-    "camc psa", "comprehensive maintenance contract psa",
-    "preventive maintenance oxygen generator", "service contract psa plant",
-    "breakdown maintenance oxygen plant", "psa plant amc", "psa plant cmc",
-    "medical gas plant maintenance", "oxygen nitrogen plant service contract",
-    "mgps maintenance", "psa plant spare parts", "oxygen plant repair maintenance",
-    "vpsa", "liquid oxygen", "lox", "Oxygen concentrator", "o2 plant",
-    "Nitrogen concentrator", "oxygen gas plant", "camc of oxygen plant", "camc of nitrogen plant",
-    "Nitrogen gas plant", "gas generation", "comprehensive maintenance contract oxygen plant",
-    "comprehensive maintenance contract psa nitrogen plant"
-]
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
-# ─── Supabase Client (like type_d.py) ──────────────────────────────────────
+# ─── PDF Library Detection ──────────────────────────────────────────────
+
+PDF_LIB = None
+PDF_LIB_NAME = None
+
+# Try multiple PDF libraries in order
+try:
+    import PyPDF2
+    PDF_LIB = PyPDF2
+    PDF_LIB_NAME = "PyPDF2"
+    print(f"[PDF] Using {PDF_LIB_NAME}")
+except ImportError:
+    try:
+        import pypdf
+        PDF_LIB = pypdf
+        PDF_LIB_NAME = "pypdf"
+        print(f"[PDF] Using {PDF_LIB_NAME}")
+    except ImportError:
+        try:
+            import pdfplumber
+            PDF_LIB = pdfplumber
+            PDF_LIB_NAME = "pdfplumber"
+            print(f"[PDF] Using {PDF_LIB_NAME}")
+        except ImportError:
+            print("[ERROR] No PDF library found! Install one: pip install PyPDF2")
+            print("[ERROR] Or: pip install pypdf")
+            print("[ERROR] Or: pip install pdfplumber")
+
+# ─── Supabase Client ──────────────────────────────────────────────────────
 
 try:
     from supabase import create_client
-    import os
     
     def _get_client():
         try:
@@ -64,68 +80,101 @@ except ImportError:
     def _get_client():
         return None
 
-log = structlog.get_logger()
+# ─── Configuration ──────────────────────────────────────────────────────
 
-_USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
-]
+# ─── Categorized Keywords with Priority ──────────────────────────────
 
-_VIEWPORTS = [
-    {"width": 1920, "height": 1080},
-    {"width": 1600, "height": 900},
-    {"width": 1536, "height": 864},
-    {"width": 1366, "height": 768},
-]
+# Each category has keywords in priority order
+# We search ONCE per category using the CATEGORY NAME
+# Then check ALL keywords against each PDF
 
-# ─── Helper Functions ──────────────────────────────────────────────────────
+KEYWORD_CATEGORIES = {
+    "psa": [
+        "psa plant",           # Priority 1 - Used for searching
+        "psa nitrogen plant",  # Priority 2
+        "psa oxygen plant",    # Priority 3
+        "psa amc",            # Priority 4
+        "psa cmc",            # Priority 5
+        "psa plant cmc"       # Priority 6
+    ],
+    "oxygen": [
+        "oxygen plant",        # Priority 1 - Used for searching
+        "oxygen psa plant",    # Priority 2
+        "oxygen gas generation", # Priority 3
+        "oxygen gas generator"  # Priority 4
+            "psa oxygen"
+    ],
+    "nitrogen": [
+        "nitrogen plant",      # Priority 1 - Used for searching
+        "nitrogen psa plant",  # Priority 2
+        "nitrogen gas generation", # Priority 3
+        "nitrogen gas generator" ,
+        "psa nitrogen",
+    
+    ],
+
+    "comprehensive maintenance contract":[
+        # need to refine the keywords probability is so less with these keywords
+"comprehensive maintenance contract psa plant",
+"comprehensive maintenance contract oxygen plant",
+"comprehensive maintenance contract nitrogen plant",
+"annual maintenance contract psa plant",
+"annual maintenance contract oxygen plant",
+"annual maintenance contract nitrogen plant",
+"Comprehensive annual maintenance contract of psa oxygen generation plant",
+"Comprehensive annual maintenance contract psa plant",
+"Comprehensive annual maintenance contract nitrogen plant",
+"preventive maintenance oxygen generator",
+"oxygen plant repair maintenance",
+"nitrogen plant repair maintenance",
+"amc psa oxygen plant",
+"cmc psa oxygen plant",
+"amc psa nitrogen plant",
+"cmc psa nitrogen plant",
+"breakdown maintenance oxygen plant",
+"breakdown maintenance nitrogen plant"
+"breakdown maintenance psa plant"
+"amc psa plany",
+"cmc psa plant",
+"customized amc/cmc for pre-owned products - psa plant",
+"customized amc/cmc for pre-owned products - oxygen psa plant",
+"customized amc/cmc for pre-owned products - nitrogen psa plant",
+"customized amc/cmc for pre-owned products - nitrogen gas plant",
+"customized amc/cmc for pre-owned products - psa oxygen generation plant",
+"customized amc/cmc for pre-owned products - comprehensive annual maintenance contract of psa oxygen generation plant",
+"customized amc/cmc for pre-owned products - mgpl system"
+],
+}
+
+
+OUTPUT_DIR = Path("output")
+OUTPUT_DIR.mkdir(exist_ok=True)
+
+# ─── Logging ─────────────────────────────────────────────────────────────
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(OUTPUT_DIR / 'scraper.log', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# ─── Helper Functions ──────────────────────────────────────────────────
 
 def safe_get_string(value, default="Untitled"):
-    """Safely get a string value, handling None."""
     if value is None:
         return default
     return str(value)
 
-
-async def _human_delay(min_ms: int = 120, max_ms: int = 350) -> None:
-    await asyncio.sleep(random.uniform(min_ms / 1000, max_ms / 1000))
-
-
-async def _stealth_context(browser: Browser) -> BrowserContext:
-    context = await browser.new_context(
-        user_agent=random.choice(_USER_AGENTS),
-        viewport=random.choice(_VIEWPORTS),
-        locale="en-IN",
-        timezone_id="Asia/Kolkata",
-        ignore_https_errors=True,
-        extra_http_headers={
-            "Accept-Language": "en-IN,en-GB;q=0.9,en;q=0.8",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "DNT": "1",
-        },
-    )
-
-    await context.add_init_script("""
-        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        Object.defineProperty(navigator, 'languages', { get: () => ['en-IN', 'en-GB', 'en'] });
-        window.chrome = window.chrome || { runtime: {}, loadTimes: () => {}, csi: () => {}, app: {} };
-    """)
-    return context
-
-
-async def _abort_asset(route) -> None:
-    await route.abort()
-
-
-def _normalize_date(raw: str | None) -> Optional[str]:
+def _normalize_date(raw: str | None) -> str | None:
     if not raw:
         return None
     raw = raw.strip()
     if not raw or raw == "N/A":
         return None
-
     for fmt in ("%d-%b-%Y", "%d/%m/%Y", "%d-%m-%Y"):
         try:
             return datetime.strptime(raw[:11].strip(), fmt).strftime("%Y-%m-%d")
@@ -133,220 +182,366 @@ def _normalize_date(raw: str | None) -> Optional[str]:
             continue
     return None
 
+def generate_url_hash(url: str) -> str:
+    return hashlib.md5(url.encode('utf-8')).hexdigest()
 
-def _safe_text(value: str | None) -> Optional[str]:
-    if not value:
-        return None
-    value = value.strip()
-    return value if value and value != "N/A" else None
-
-
-def _build_organization(department: str | None, organization: str | None) -> Optional[str]:
+def _build_organization(department: str | None, organization: str | None) -> str | None:
     dept = _safe_text(department)
     org = _safe_text(organization)
     if dept and org:
         return f"{dept} | {org}"
     return dept or org
 
+def _safe_text(value: str | None) -> str | None:
+    if not value:
+        return None
+    value = value.strip()
+    return value if value and value != "N/A" else None
 
-async def _set_search_type(page: Page, search_type: str = "contains") -> None:
-    try:
-        dropdown = page.locator(".searchtype").first
-        if await dropdown.count() == 0:
-            return
+# ─── Title Cleaning Functions ──────────────────────────────────────────
 
-        await dropdown.click()
-        await _human_delay(250, 500)
+def has_hindi_characters(text: str) -> bool:
+    """Check if text contains Devanagari (Hindi) characters."""
+    if not text:
+        return False
+    return bool(re.search(r'[\u0900-\u097F]', text))
 
-        if search_type.lower() == "exact":
-            await page.locator("xpath=//a[contains(normalize-space(.), 'Exact Search')]").first.click()
+def extract_english_text(text: str) -> str:
+    """Extract only English text from mixed Hindi/English text."""
+    if not text:
+        return ""
+    
+    match = re.search(r'([A-Za-z0-9\s\-_,.()]+)\s*[/:]\s*[\u0900-\u097F]', text)
+    if match:
+        return match.group(1).strip()
+    
+    match = re.search(r'[\u0900-\u097F]+\s*[/:]\s*([A-Za-z0-9\s\-_,.()]+)', text)
+    if match:
+        return match.group(1).strip()
+    
+    english_words = re.findall(r'[A-Za-z][A-Za-z\s\-_,.()]+', text)
+    if english_words:
+        return ' '.join(english_words[:3])
+    
+    return ""
+
+def clean_title(title: str) -> str:
+    """Clean title - remove Hindi, keep English, remove prefixes."""
+    if not title:
+        return ""
+    
+    if has_hindi_characters(title):
+        english_part = extract_english_text(title)
+        if english_part:
+            title = english_part
         else:
-            await page.locator("xpath=//a[contains(normalize-space(.), 'Contains')]").first.click()
+            title = re.sub(r'[\u0900-\u097F]+', '', title)
+            title = ' '.join(title.split())
+    
+    prefixes = [
+        'Custom Bid for Services - ',
+        'Supply of ',
+        'AMC/CMC for ',
+        'Design Installation and Maintenance of ',
+        'Comprehensive Maintenance Contract for ',
+        'Annual Maintenance Contract for ',
+        'Service Contract for ',
+        'Rate Contract for ',
+        'Procurement of ',
+        'Supply and Installation of ',
+    ]
+    
+    for prefix in prefixes:
+        if title.lower().startswith(prefix.lower()):
+            title = title[len(prefix):]
+    
+    title = ' '.join(title.split())
+    
+    if len(title) > 150:
+        title = title[:147] + '...'
+    
+    return title.strip()
 
-        await _human_delay(250, 500)
-    except Exception as exc:
-        log.debug("type_c.search_type_failed", error=str(exc))
+# ─── URL Fix Function ──────────────────────────────────────────────────
 
+def get_pdf_url(bid_url: str) -> str:
+    """
+    Extract bid ID and build PRODUCTION URL.
+    """
+    if not bid_url:
+        return ""
+    
+    bid_url = bid_url.strip()
+    
+    if bid_url.startswith('https://bidplus.gem.gov.in/showbidDocument/'):
+        return bid_url
+    
+    match = re.search(r'/showbidDocument/(\d+)', bid_url)
+    if match:
+        bid_id = match.group(1)
+        return f"https://bidplus.gem.gov.in/showbidDocument/{bid_id}"
+    
+    match = re.search(r'showbidDocument[/]?(\d+)', bid_url)
+    if match:
+        bid_id = match.group(1)
+        return f"https://bidplus.gem.gov.in/showbidDocument/{bid_id}"
+    
+    match = re.search(r'/(\d{7,})', bid_url)
+    if match:
+        bid_id = match.group(1)
+        return f"https://bidplus.gem.gov.in/showbidDocument/{bid_id}"
+    
+    if 'localhost' in bid_url or '127.0.0.1' in bid_url:
+        match = re.search(r'/showbidDocument/(\d+)', bid_url)
+        if match:
+            bid_id = match.group(1)
+            return f"https://bidplus.gem.gov.in/showbidDocument/{bid_id}"
+    
+    if bid_url.startswith('http'):
+        match = re.search(r'/(\d{7,})', bid_url)
+        if match:
+            bid_id = match.group(1)
+            return f"https://bidplus.gem.gov.in/showbidDocument/{bid_id}"
+        return bid_url
+    
+    if bid_url.startswith('/showbidDocument'):
+        return f"https://bidplus.gem.gov.in{bid_url}"
+    
+    if bid_url.startswith('showbidDocument'):
+        return f"https://bidplus.gem.gov.in/{bid_url}"
+    
+    logger.warning(f"Could not extract bid ID from: {bid_url}")
+    return ""
 
-async def _wait_for_results(page: Page, timeout_ms: int = 60000) -> bool:
+# ─── PDF Extraction ─────────────────────────────────────────────────────
+
+def extract_pdf_text(pdf_url: str) -> tuple[str, str]:
+    """
+    Extract text from PDF using available library.
+    Returns: (text, method_used)
+    """
+    if PDF_LIB is None:
+        return "", "No PDF library available"
+    
+    if not pdf_url:
+        return "", "No PDF URL provided"
+    
     try:
-        await page.wait_for_function(
-            """() => {
-                const cards = document.querySelectorAll('#bidCard .card');
-                const noRecords = document.body && document.body.innerText && document.body.innerText.includes('No records found');
-                return cards.length > 0 || noRecords;
-            }""",
-            timeout=timeout_ms,
-        )
-        return True
-    except Exception:
-        return False
-
-
-async def _scrape_current_page(page: Page) -> list[dict]:
-    bids_data: list[dict] = []
-
-    cards = page.locator("#bidCard .card")
-    card_count = await cards.count()
-    if card_count == 0:
-        return bids_data
-
-    for idx in range(card_count):
-        bid = cards.nth(idx)
-        data: dict[str, str] = {}
-
-        try:
-            links = bid.locator("a.bid_no_hover")
-            link_count = await links.count()
-            if link_count > 0:
-                first_link = links.nth(0)
-                data["bid_number"] = (await first_link.inner_text()).strip()
-                data["bid_url"] = await first_link.get_attribute("href") or ""
-                if link_count > 1:
-                    data["ra_number"] = (await links.nth(1).inner_text()).strip()
+        logger.debug(f"Downloading PDF from: {pdf_url}")
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36',
+            'Accept': 'application/pdf, text/html, */*',
+            'Accept-Language': 'en-IN,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Referer': 'https://bidplus.gem.gov.in/all-bids',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'same-origin',
+            'Upgrade-Insecure-Requests': '1',
+            'Cache-Control': 'max-age=0',
+        }
+        
+        session = requests.Session()
+        session.headers.update(headers)
+        session.cookies.set('visited', 'true')
+        
+        response = session.get(pdf_url, timeout=60, allow_redirects=True)
+        response.raise_for_status()
+        
+        content = response.content
+        
+        content_type = response.headers.get('content-type', '').lower()
+        
+        if 'html' in content_type and 'pdf' not in content_type:
+            logger.debug("Got HTML response, looking for PDF link...")
+            
+            try:
+                html_text = content.decode('utf-8', errors='ignore')
+            except:
+                html_text = str(content)
+            
+            redirect_match = re.search(r'window\.location\.href\s*=\s*["\']([^"\']+)["\']', html_text)
+            if redirect_match:
+                pdf_path = redirect_match.group(1)
+                if not pdf_path.startswith('http'):
+                    pdf_path = f"https://bidplus.gem.gov.in{pdf_path}"
+                logger.debug(f"Found redirect to: {pdf_path}")
+                response = session.get(pdf_path, timeout=60, allow_redirects=True)
+                response.raise_for_status()
+                content = response.content
+            else:
+                pdf_match = re.search(r'href=["\']([^"\']+\.pdf)["\']', html_text, re.IGNORECASE)
+                if pdf_match:
+                    pdf_path = pdf_match.group(1)
+                    if not pdf_path.startswith('http'):
+                        pdf_path = f"https://bidplus.gem.gov.in{pdf_path}"
+                    logger.debug(f"Found PDF link: {pdf_path}")
+                    response = session.get(pdf_path, timeout=60, allow_redirects=True)
+                    response.raise_for_status()
+                    content = response.content
                 else:
-                    data["ra_number"] = "N/A"
-            else:
-                data["bid_number"] = "N/A"
-                data["ra_number"] = "N/A"
-                data["bid_url"] = ""
-        except Exception:
-            data["bid_number"] = "N/A"
-            data["ra_number"] = "N/A"
-            data["bid_url"] = ""
+                    doc_match = re.search(r'href=["\']([^"\']*showbidDocument[^"\']+)["\']', html_text, re.IGNORECASE)
+                    if doc_match:
+                        pdf_path = doc_match.group(1)
+                        if not pdf_path.startswith('http'):
+                            pdf_path = f"https://bidplus.gem.gov.in{pdf_path}"
+                        logger.debug(f"Found document link: {pdf_path}")
+                        response = session.get(pdf_path, timeout=60, allow_redirects=True)
+                        response.raise_for_status()
+                        content = response.content
+                    else:
+                        return "", "Got HTML response, no PDF link found"
+        
+        if len(content) < 100:
+            return "", "PDF content too small (likely invalid)"
+        
+        if PDF_LIB_NAME == "pdfplumber":
+            return extract_pdf_pdfplumber(content), "pdfplumber"
+        elif PDF_LIB_NAME == "PyPDF2":
+            return extract_pdf_pypdf2(content), "PyPDF2"
+        elif PDF_LIB_NAME == "pypdf":
+            return extract_pdf_pypdf(content), "pypdf"
+        else:
+            return "", "Unknown PDF library"
+            
+    except requests.Timeout:
+        return "", "Timeout downloading PDF"
+    except requests.RequestException as e:
+        return "", f"Request failed: {e}"
+    except Exception as e:
+        return "", f"Error: {e}"
 
-        try:
-            item_anchor = bid.locator(".card-body .col-md-4 .row a").first
-            if await item_anchor.count() > 0:
-                data["items"] = (
-                    await item_anchor.get_attribute("data-content")
-                    or (await item_anchor.inner_text()).strip()
-                )
-            else:
-                data["items"] = "N/A"
-        except Exception:
-            data["items"] = "N/A"
-
-        try:
-            qty_rows = bid.locator(".card-body .col-md-4 .row")
-            if await qty_rows.count() > 1:
-                qty_text = (await qty_rows.nth(1).inner_text()).strip()
-                data["quantity"] = qty_text.replace("Quantity:", "").strip()
-            else:
-                data["quantity"] = "N/A"
-        except Exception:
-            data["quantity"] = "N/A"
-
-        try:
-            dept_rows = bid.locator(".card-body .col-md-5 .row")
-            if await dept_rows.count() > 1:
-                full_dept_text = (await dept_rows.nth(1).inner_text()).strip()
-                lines = [line.strip() for line in full_dept_text.split("\n") if line.strip()]
-                data["department"] = lines[0] if lines else full_dept_text
-                data["organization"] = lines[1] if len(lines) > 1 else "N/A"
-            else:
-                data["department"] = "N/A"
-                data["organization"] = "N/A"
-        except Exception:
-            data["department"] = "N/A"
-            data["organization"] = "N/A"
-
-        try:
-            data["start_date"] = (await bid.locator(".start_date").first.inner_text()).strip()
-        except Exception:
-            data["start_date"] = "N/A"
-
-        try:
-            data["end_date"] = (await bid.locator(".end_date").first.inner_text()).strip()
-        except Exception:
-            data["end_date"] = "N/A"
-
-        data["timestamp"] = datetime.now().isoformat()
-        bids_data.append(data)
-
-    return bids_data
-
-
-async def _has_next_page(page: Page) -> bool:
+def extract_pdf_pypdf2(content):
     try:
-        next_btn = page.locator("xpath=//a[contains(normalize-space(.), 'Next')]").first
-        if await next_btn.count() == 0:
-            return False
-        return await next_btn.is_visible() and await next_btn.is_enabled()
+        pdf_file = io.BytesIO(content)
+        reader = PyPDF2.PdfReader(pdf_file)
+        text = ""
+        for page in reader.pages:
+            try:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+            except Exception:
+                continue
+        return text
     except Exception:
-        return False
+        return ""
 
-
-async def _go_to_next_page(page: Page) -> bool:
+def extract_pdf_pypdf(content):
     try:
-        next_btn = page.locator("xpath=//a[contains(normalize-space(.), 'Next')]").first
-        if await next_btn.count() == 0:
-            return False
+        pdf_file = io.BytesIO(content)
+        reader = pypdf.PdfReader(pdf_file)
+        text = ""
+        for page in reader.pages:
+            try:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+            except Exception:
+                continue
+        return text
+    except Exception:
+        return ""
 
-        await next_btn.scroll_into_view_if_needed()
-        await _human_delay(200, 400)
-        await next_btn.click()
-        await _human_delay(1200, 1800)
-        return await _wait_for_results(page, timeout_ms=30000)
-    except Exception as exc:
-        log.debug("type_c.next_page_failed", error=str(exc))
+def extract_pdf_pdfplumber(content):
+    try:
+        pdf_file = io.BytesIO(content)
+        text = ""
+        with pdfplumber.open(pdf_file) as pdf:
+            for page in pdf.pages:
+                try:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+                except Exception:
+                    continue
+        return text
+    except Exception:
+        return ""
+
+# ─── Exact Phrase Matching Functions ──────────────────────────────────
+
+def exact_phrase_match(text: str, keyword: str) -> bool:
+    """
+    Check if the exact keyword phrase exists in the text.
+    """
+    if not text or not keyword:
         return False
+    
+    text_lower = text.lower()
+    keyword_lower = keyword.lower()
+    
+    pattern = r'\b' + re.escape(keyword_lower) + r'\b'
+    return bool(re.search(pattern, text_lower))
 
+def simple_match(text: str, keyword: str) -> bool:
+    """Uses exact phrase matching."""
+    return exact_phrase_match(text, keyword)
+
+# ─── Save Function ──────────────────────────────────────────────────
 
 def save_to_gem_table(tender_data_list: list) -> int:
-    """Save scraped tenders to the gem_tenders table (like type_d.py)."""
+    """Save scraped tenders using ONLY webpage data for titles."""
     saved_count = 0
-    
-    # Try to get Supabase client
     client = _get_client()
     
-    # If no client, save to CSV as fallback
     if client is None:
-        print("[WARN] No Supabase client available. Saving to CSV instead.")
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        filename = f"gem_results_{timestamp}.csv"
+        filename = OUTPUT_DIR / f'gem_results_{timestamp}.csv'
         if tender_data_list:
             keys = tender_data_list[0].keys()
-            with open(filename, 'w', newline='', encoding='utf-8') as output_file:
-                dict_writer = csv.DictWriter(output_file, fieldnames=keys)
-                dict_writer.writeheader()
-                dict_writer.writerows(tender_data_list)
+            with open(filename, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=keys)
+                writer.writeheader()
+                writer.writerows(tender_data_list)
             print(f"[OK] Data saved to '{filename}' as fallback")
         return len(tender_data_list)
     
-    # Save to Supabase
     for data in tender_data_list:
         try:
             if not data.get('bid_url'):
                 print(f"   [WARN] Skipping - no URL")
                 continue
             
-            # Generate URL hash for deduplication
-            url_hash = hashlib.md5(data['bid_url'].encode('utf-8')).hexdigest()
+            title = data.get('web_category') or data.get('items', '')
+            title = clean_title(title)
             
-            # Check for duplicate
+            if not title or title == 'N/A' or len(title) < 5:
+                bid_num = data.get('bid_number', '')
+                org = data.get('organization', '')
+                title = f"{bid_num} - {org}" if org else bid_num
+            
+            if not title:
+                title = 'Untitled'
+            
+            url_hash = generate_url_hash(data['bid_url'])
+            
             try:
                 check_res = client.table("gem_tenders").select("id").eq("url_hash", url_hash).execute()
                 if check_res.data and len(check_res.data) > 0:
-                    print(f"   [SKIP] Duplicate: {safe_get_string(data.get('items'), 'Untitled')}")
+                    print(f"   [SKIP] Duplicate: {title[:40]}...")
                     continue
             except Exception as e:
                 print(f"   [WARN] Duplicate check failed: {e}")
             
-            # Build organization from department and organization
-            organization = _build_organization(data.get('department'), data.get('organization'))
+            organization = data.get('organization') or data.get('department')
             
-            # Insert into gem_tenders table
+            matched_keyword = data.get('matched_keyword', '')
+            matched_category = data.get('matched_category', '')
+            
             row = {
-                "title": data.get('items'),
+                "title": title,
                 "reference_number": data.get('bid_number'),
                 "organization": organization,
                 "deadline": _normalize_date(data.get('end_date')),
-                "estimated_value": None,  # GeM doesn't have estimated value in the same format
-                "location": None,  # GeM doesn't have location in the same format
+                "estimated_value": None,
+                "location": None,
                 "source_url": data.get('bid_url'),
                 "url_hash": url_hash,
-                "keywords_matched": [data.get('keyword')] if data.get('keyword') else [],
+                "keywords_matched": [matched_keyword] if matched_keyword else [],
+                "matched_category": matched_category,
                 "scraped_at": datetime.now(timezone.utc).isoformat(),
             }
             
@@ -354,9 +549,9 @@ def save_to_gem_table(tender_data_list: list) -> int:
                 res = client.table("gem_tenders").insert(row).execute()
                 if res.data and len(res.data) > 0:
                     saved_count += 1
-                    print(f"   [OK] Saved: {safe_get_string(data.get('items'), 'Untitled')}")
+                    print(f"   [OK] Saved: {title[:50]}... (Category: {matched_category})")
                 else:
-                    print(f"   [WARN] Failed to save: {safe_get_string(data.get('items'), 'Untitled')}")
+                    print(f"   [WARN] Failed to save: {title[:50]}")
             except Exception as e:
                 print(f"   [ERROR] Insert failed: {e}")
                 
@@ -365,9 +560,8 @@ def save_to_gem_table(tender_data_list: list) -> int:
     
     return saved_count
 
-
 def archive_expired_gem_tenders(client):
-    """Archive expired tenders from gem_tenders table (like type_d.py)."""
+    """Archive expired tenders from gem_tenders table."""
     if client is None:
         print("[ARCHIVE] No Supabase client — skipping archive sweep.")
         return 0
@@ -375,7 +569,6 @@ def archive_expired_gem_tenders(client):
     today = datetime.now(timezone.utc).date().isoformat()
     print(f"\n[ARCHIVE] Starting expired-tender sweep (today = {today})...")
 
-    # Fetch all live tenders whose deadline has passed
     try:
         res = client.table("gem_tenders") \
             .select("*") \
@@ -393,7 +586,6 @@ def archive_expired_gem_tenders(client):
 
     print(f"[ARCHIVE] Found {len(expired)} expired tender(s) to archive.")
 
-    # Fetch original_ids already in the archive
     try:
         existing_res = client.table("archive_gem_tenders") \
             .select("original_id") \
@@ -427,6 +619,7 @@ def archive_expired_gem_tenders(client):
             "estimated_value":  tender.get("estimated_value"),
             "source_url":       tender.get("source_url"),
             "keywords_matched": tender.get("keywords_matched", []),
+            "matched_category": tender.get("matched_category", ""),
             "user_status":      tender.get("user_status", "active"),
             "scraped_at":       tender.get("scraped_at"),
             "archived_at":      datetime.now(timezone.utc).isoformat(),
@@ -457,70 +650,80 @@ def archive_expired_gem_tenders(client):
     )
     return archived_count
 
+# ─── Scraper Functions ──────────────────────────────────────────────────
 
-async def _scrape_keyword(page: Page, keyword: str) -> list[dict]:
-    """Scrape a single keyword with pagination."""
-    all_bids: list[dict] = []
-    seen_refs: set[str] = set()
-    page_num = 1
-
+async def _wait_for_results(page, timeout_ms: int = 60000) -> bool:
     try:
-        print(f"   [SEARCH] Searching for: '{keyword}'")
+        await page.wait_for_function(
+            """() => {
+                const cards = document.querySelectorAll('#bidCard .card');
+                const noRecords = document.body && document.body.innerText && document.body.innerText.includes('No records found');
+                return cards.length > 0 || noRecords;
+            }""",
+            timeout=timeout_ms,
+        )
+        return True
+    except Exception:
+        return False
+
+async def _has_next_page(page) -> bool:
+    try:
+        next_btn = await page.query_selector('xpath=//a[contains(normalize-space(.), "Next")]')
+        if not next_btn:
+            return False
+        return await next_btn.is_visible() and await next_btn.is_enabled()
+    except Exception:
+        return False
+
+async def _go_to_next_page(page) -> bool:
+    try:
+        next_btn = await page.query_selector('xpath=//a[contains(normalize-space(.), "Next")]')
+        if not next_btn:
+            return False
         
-        search_input = page.locator("#searchBid").first
-        await search_input.click(timeout=8_000)
-        await _human_delay(50, 100)
-        await search_input.fill("")
-        await search_input.type(keyword, delay=random.randint(25, 50))
-        await _human_delay(50, 120)
+        await next_btn.scroll_into_view_if_needed()
+        await asyncio.sleep(0.3)
+        await next_btn.click()
+        await asyncio.sleep(1.5)
+        return await _wait_for_results(page)
+    except Exception:
+        return False
 
-        await page.locator("#searchBidRA").first.click(timeout=8_000)
-        await _human_delay(900, 1400)
+# ─── Main Scraper ──────────────────────────────────────────────────────
 
-        await _wait_for_results(page, timeout_ms=60000)
-
-        while True:
-            bids = await _scrape_current_page(page)
-            for bid in bids:
-                key = _safe_text(bid.get("bid_number")) or _safe_text(bid.get("bid_url")) or ""
-                if not key or key in seen_refs:
-                    continue
-                seen_refs.add(key)
-                bid['keyword'] = keyword  # Add keyword to the bid data
-                all_bids.append(bid)
-
-            print(f"   [DATA] Page {page_num}: Found {len(bids)} bids (total: {len(all_bids)})")
-
-            if not await _has_next_page(page):
-                print(f"   [INFO] No more pages for '{keyword}'")
-                break
-
-            if not await _go_to_next_page(page):
-                print(f"   [INFO] Could not go to next page for '{keyword}'")
-                break
-            
-            page_num += 1
-            await _human_delay(1000, 1500)
-
-        print(f"   [SUMMARY] Found {len(all_bids)} total bids for '{keyword}'")
-        return all_bids
-        
-    except Exception as exc:
-        log.warning("type_c.keyword_failed", keyword=keyword, error=str(exc))
-        return all_bids
-
-
-async def scrape_type_c():
+async def scrape_gem():
     """
-    Main scraping function - independent like type_d.py.
+    OPTIMIZED SCRAPER - ONE SEARCH PER CATEGORY USING CATEGORY NAME:
+    
+    For each category:
+        1. Search using the CATEGORY NAME (e.g., "psa", "oxygen", "nitrogen")
+        2. Go through ALL pages and ALL PDFs
+        3. For each PDF: Download ONCE, check ALL keywords in category
+        4. Stop checking keywords at first match (priority order)
+        5. Save if match found, discard if no match
+        6. Move to next category
+    
+    Benefits:
+        - Only ONE search per category using category name
+        - Each PDF downloaded ONCE
+        - All keywords checked against each PDF
+        - No re-downloading
+        - No restarting from page 1
+        - Much faster!
     """
-    print(f"\n{'='*60}")
-    print(f"[START] GeM BidPlus Scraper")
-    print(f"[START] Total keywords: {len(INCLUDE_KEYWORDS)}")
-    print(f"{'='*60}")
-
-    all_scraped_data = []
-
+    
+    logger.info("=" * 60)
+    logger.info("GeM Tender Scraper with Supabase")
+    logger.info(f"Categories: {len(KEYWORD_CATEGORIES)}")
+    total_keywords = sum(len(kw) for kw in KEYWORD_CATEGORIES.values())
+    logger.info(f"Total Keywords: {total_keywords}")
+    logger.info(f"PDF Library: {PDF_LIB_NAME or 'None'}")
+    logger.info("=" * 60)
+    
+    all_results = []
+    # Track processed bid URLs globally to avoid duplicates across categories
+    processed_bids_global = set()
+    
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(
             headless=True,
@@ -529,75 +732,190 @@ async def scrape_type_c():
                 "--disable-blink-features=AutomationControlled",
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
-                "--disable-web-security",
-                "--disable-features=IsolateOrigins,site-per-process",
-                "--allow-running-insecure-content",
-                "--disable-site-isolation-trials",
-                "--ignore-certificate-errors",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--disable-infobars",
-                "--window-size=1920,1080",
-            ],
+            ]
         )
-
-        context = await _stealth_context(browser)
+        context = await browser.new_context(
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36',
+            viewport={'width': 1920, 'height': 1080},
+            locale='en-IN',
+            timezone_id='Asia/Kolkata',
+            ignore_https_errors=True,
+        )
         page = await context.new_page()
-        page.set_default_timeout(30_000)
-
+        
         try:
-            await page.route(
-                "**/*.{png,jpg,jpeg,gif,webp,svg,woff,woff2,ttf,eot,mp4,mp3,ico}",
-                _abort_asset,
-            )
-
-            url = "https://bidplus.gem.gov.in/all-bids"
-            print(f"[NAV] Navigating to {url}...")
-            await page.goto(url, wait_until="domcontentloaded")
-            await _human_delay(4_000, 5_000)
+            logger.info("Navigating to https://bidplus.gem.gov.in/all-bids ...")
+            await page.goto('https://bidplus.gem.gov.in/all-bids', wait_until='domcontentloaded')
+            await asyncio.sleep(3)
             
-            print("[OK] Page loaded successfully.")
-            await _set_search_type(page, search_type="contains")
-
-            processed_count = 0
-            total_keywords = len(INCLUDE_KEYWORDS)
-
-            for keyword in INCLUDE_KEYWORDS:
-                processed_count += 1
-                print(f"\n{'='*50}")
-                print(f"[PROGRESS {processed_count}/{total_keywords}] Processing keyword: '{keyword}'")
-                print(f"{'='*50}")
+            # ─── Process each category - ONE SEARCH PER CATEGORY ──────────────
+            for category, keywords in KEYWORD_CATEGORIES.items():
+                # Use the CATEGORY NAME as the search term
+                search_term = category  # "psa", "oxygen", "nitrogen"
                 
-                results = await _scrape_keyword(page, keyword)
+                logger.info(f"\n{'='*60}")
+                logger.info(f"🎯 PROCESSING CATEGORY: '{category.upper()}'")
+                logger.info(f"   Search Term: '{search_term}' (category name)")
+                logger.info(f"   All Keywords to check: {keywords}")
+                logger.info(f"{'='*60}")
                 
-                if results:
-                    all_scraped_data.extend(results)
-                    print(f"   [TOTAL] Added {len(results)} bids from '{keyword}'")
-                else:
-                    print(f"   [WARN] No bids found for '{keyword}'")
+                # ─── Search using the category name ──────────────────────────
+                search_input = await page.query_selector('#searchBid')
+                if not search_input:
+                    logger.error("  ❌ Search input not found")
+                    continue
                 
-                # Delay between keywords
-                if keyword != INCLUDE_KEYWORDS[-1]:
-                    print(f"   [WAIT] Waiting 2 seconds before next keyword...")
-                    await _human_delay(2000, 2500)
-
-            print(f"\n{'='*60}")
-            print(f"[DONE] Scraping Complete")
-            print(f"[DONE] Total bids scraped: {len(all_scraped_data)}")
-            print(f"{'='*60}")
-
+                await search_input.click()
+                await asyncio.sleep(0.1)
+                await search_input.fill('')
+                await search_input.type(search_term, delay=50)
+                await asyncio.sleep(0.1)
+                
+                search_btn = await page.query_selector('#searchBidRA')
+                if search_btn:
+                    await search_btn.click()
+                
+                await asyncio.sleep(3)
+                
+                page_num = 1
+                category_matches = 0
+                pdf_count = 0
+                
+                # ─── Process ALL pages for this category ──────────────────────
+                while True:
+                    cards = await page.query_selector_all('#bidCard .card')
+                    logger.info(f"  📄 Page {page_num}: Found {len(cards)} bids")
+                    
+                    # Process each bid on this page
+                    for idx, card in enumerate(cards, 1):
+                        try:
+                            # Get bid information
+                            bid_elem = await card.query_selector('a.bid_no_hover')
+                            if not bid_elem:
+                                continue
+                            
+                            bid_number = (await bid_elem.text_content() or "").strip()
+                            bid_url = await bid_elem.get_attribute('href') or ""
+                            
+                            # Skip if already processed globally
+                            if bid_url in processed_bids_global:
+                                logger.info(f"    [{idx}] {bid_number} - Already processed globally, skipping")
+                                continue
+                            
+                            # Build PDF URL
+                            pdf_url = get_pdf_url(bid_url)
+                            
+                            # Get web category (title source)
+                            item_elem = await card.query_selector('.card-body .col-md-4 .row a')
+                            web_category = ""
+                            if item_elem:
+                                web_category = await item_elem.get_attribute("data-content")
+                                if not web_category:
+                                    web_category = await item_elem.inner_text()
+                                web_category = web_category.strip() if web_category else ""
+                            
+                            # Get dates
+                            end_elem = await card.query_selector('.end_date')
+                            end_date = await end_elem.text_content() if end_elem else ""
+                            
+                            # Get department/organization
+                            department = ""
+                            organization = ""
+                            dept_rows = await card.query_selector_all('.card-body .col-md-5 .row')
+                            if len(dept_rows) > 1:
+                                dept_text = (await dept_rows[1].text_content() or "").strip()
+                                lines = [line.strip() for line in dept_text.split('\n') if line.strip()]
+                                department = lines[0] if lines else ""
+                                organization = lines[1] if len(lines) > 1 else ""
+                            
+                            logger.info(f"    [{idx}] {bid_number}")
+                            logger.info(f"      📝 Web Category: {web_category[:60]}...")
+                            
+                            if not pdf_url:
+                                logger.info(f"      ⚠️ No valid PDF URL")
+                                continue
+                            
+                            # ─── DOWNLOAD PDF ONCE ──────────────────────────────
+                            logger.info(f"      ⬇️  Downloading PDF...")
+                            pdf_text, method = extract_pdf_text(pdf_url)
+                            
+                            if not pdf_text:
+                                logger.info(f"      ❌ PDF extraction failed: {method}")
+                                continue
+                            
+                            pdf_count += 1
+                            logger.info(f"      ✅ PDF extracted ({len(pdf_text)} chars)")
+                            
+                            # ─── CHECK ALL KEYWORDS IN CATEGORY ──────────────────
+                            # Check in priority order, stop at first match
+                            matched_keyword = None
+                            for priority_keyword in keywords:
+                                if simple_match(pdf_text, priority_keyword):
+                                    matched_keyword = priority_keyword
+                                    break  # 🛑 Stop checking other keywords
+                            
+                            # ─── SAVE OR DISCARD ──────────────────────────────────
+                            if matched_keyword:
+                                logger.info(f"      ✅ MATCH FOUND! (keyword: '{matched_keyword}')")
+                                
+                                all_results.append({
+                                    'bid_number': bid_number,
+                                    'bid_url': bid_url,
+                                    'pdf_url': pdf_url,
+                                    'web_category': web_category,
+                                    'items': web_category,
+                                    'matched_keyword': matched_keyword,
+                                    'matched_category': category,
+                                    'department': department,
+                                    'organization': organization,
+                                    'end_date': end_date.strip() if end_date else "",
+                                    'scraped_at': datetime.now().isoformat()
+                                })
+                                
+                                processed_bids_global.add(bid_url)
+                                category_matches += 1
+                            else:
+                                logger.info(f"      ❌ No match found for any keyword in category '{category}'")
+                            
+                            # PDF text automatically discarded when loop continues
+                            
+                        except Exception as e:
+                            logger.error(f"      Error processing bid: {e}")
+                    
+                    # ─── Check if we should go to next page ──────────────────
+                    if not await _has_next_page(page):
+                        break
+                    
+                    if not await _go_to_next_page(page):
+                        break
+                    
+                    page_num += 1
+                    await asyncio.sleep(1)
+                
+                logger.info(f"\n  📈 Category '{category.upper()}' summary:")
+                logger.info(f"     Total PDFs checked: {pdf_count}")
+                logger.info(f"     Total matches found: {category_matches}")
+                
+                # ─── Delay between categories ─────────────────────────────────
+                if list(KEYWORD_CATEGORIES.keys())[-1] != category:
+                    logger.info(f"\n⏳ Waiting 3 seconds before next category...")
+                    await asyncio.sleep(3)
+                
+        except Exception as e:
+            logger.error(f"Scraping error: {e}")
+        
         finally:
             await context.close()
             await browser.close()
-
+    
     # ─── Save Data ──────────────────────────────────────────────────────────
-
-    if all_scraped_data:
-        print(f"\n[DATA] Total bids scraped: {len(all_scraped_data)}")
+    
+    if all_results:
+        print(f"\n[DATA] Total matches found: {len(all_results)}")
         
         # Remove duplicates by URL
         unique_tenders = {}
-        for tender in all_scraped_data:
+        for tender in all_results:
             url = tender.get('bid_url')
             if url and url not in unique_tenders:
                 unique_tenders[url] = tender
@@ -605,33 +923,67 @@ async def scrape_type_c():
         unique_list = list(unique_tenders.values())
         print(f"[DATA] {len(unique_list)} unique bids after deduplication")
         
-        # Save to gem_tenders table (or CSV as fallback)
+        # Print summary by category
+        print("\n[SUMMARY BY CATEGORY]")
+        category_counts = {}
+        for tender in unique_list:
+            cat = tender.get('matched_category', 'unknown')
+            category_counts[cat] = category_counts.get(cat, 0) + 1
+        
+        for category, count in sorted(category_counts.items()):
+            print(f"  {category.upper()}: {count} tenders")
+        
+        # Print which keyword matched
+        print("\n[MATCHED KEYWORDS BY CATEGORY]")
+        keyword_counts = {}
+        for tender in unique_list:
+            keyword = tender.get('matched_keyword', 'unknown')
+            keyword_counts[keyword] = keyword_counts.get(keyword, 0) + 1
+        
+        for keyword, count in sorted(keyword_counts.items(), key=lambda x: x[1], reverse=True):
+            print(f"  '{keyword}': {count} tenders")
+        
+        # Save to Supabase
         saved = save_to_gem_table(unique_list)
-        print(f"[OK] Saved {saved} bids to database.")
-
+        print(f"\n[OK] Saved {saved} bids to database.")
+        
         # Archive expired tenders
         archive_client = _get_client()
         archived = archive_expired_gem_tenders(archive_client)
         print(f"[OK] Archived {archived} expired tender(s) from database.")
-
+        
         # Print sample
-        print("\n[Sample of scraped data:]")
-        for i, item in enumerate(unique_list[:5]):
-            title = safe_get_string(item.get('items'), 'Untitled')
+        print("\n[Sample of matches:]")
+        for i, item in enumerate(unique_list[:5], 1):
+            title = safe_get_string(item.get('web_category', item.get('items')), 'Untitled')
+            title = clean_title(title)
             ref = safe_get_string(item.get('bid_number'), 'No Ref')
-            keyword = safe_get_string(item.get('keyword'), 'Unknown')
-            print(f"  {i+1}. {title[:60]} - {ref} - [{keyword}]")
+            keyword = safe_get_string(item.get('matched_keyword'), 'Unknown')
+            category = safe_get_string(item.get('matched_category'), 'Unknown')
+            print(f"  {i}. {title[:60]} - {ref}")
+            print(f"     Category: {category} | Matched: '{keyword}'")
         
         if len(unique_list) > 5:
             print(f"  ... and {len(unique_list) - 5} more")
     else:
-        print("[WARN] No data was scraped.")
-
-    return all_scraped_data
-
+        print("[WARN] No matches found.")
+    
+    return all_results
 
 # ─── Main Entry Point ──────────────────────────────────────────────────────
 
-if __name__ == "__main__":
-    import time
-    asyncio.run(scrape_type_c())
+if __name__ == '__main__':
+    print("\n" + "=" * 60)
+    print("GeM Tender Scraper with Supabase")
+    print(f"Categories: {len(KEYWORD_CATEGORIES)}")
+    total_keywords = sum(len(kw) for kw in KEYWORD_CATEGORIES.values())
+    print(f"Total Keywords: {total_keywords}")
+    print("=" * 60 + "\n")
+    
+    try:
+        results = asyncio.run(scrape_gem())
+        print(f"\n✅ Done! Found {len(results)} matching tenders.")
+    except KeyboardInterrupt:
+        print("\n⚠️ Interrupted by user")
+    except Exception as e:
+        print(f"\n❌ Error: {e}")

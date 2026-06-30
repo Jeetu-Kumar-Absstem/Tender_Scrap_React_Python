@@ -80,6 +80,20 @@ function SidebarContent({
   showDisclaimer,
   logsOpen, setLogsOpen,
 }: any) {
+  const [pendingStart, setPendingStart] = useState(false)
+
+  // Clear optimistic state once the hook confirms it's actually running (or errored)
+  useEffect(() => {
+    if (isRunning || error) setPendingStart(false)
+  }, [isRunning, error])
+
+  const handleTrigger = () => {
+    setPendingStart(true)
+    trigger()
+  }
+
+  const isBusy = isRunning || loading || pendingStart
+
   const lastSuccess = status?.pipeline?.last_result?.success
   const runStatus   = status?.pipeline?.last_result?.status
 
@@ -108,23 +122,23 @@ function SidebarContent({
       {/* Start Execution button */}
       <div className="px-3 pt-4 pb-2">
         <button
-          onClick={trigger}
-          disabled={isRunning || loading}
+          onClick={handleTrigger}
+          disabled={isBusy}
           title="Execution may take time"
           className={clsx(
             'w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
-            isRunning || loading
+            isBusy
               ? 'bg-blue-100 text-blue-500 cursor-not-allowed'
               : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow'
           )}
         >
-          {isRunning || loading
+          {isBusy
             ? <><Loader2 size={13} className="animate-spin" style={lufgaRegularStyle} /> Running...</>
             : <><Play size={13} /> Start Execution</>
           }
         </button>
 
-        {isRunning && (
+        {(isRunning || pendingStart) && (
           <button
             onClick={stop}
             className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-100 transition-colors"

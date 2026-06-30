@@ -102,6 +102,34 @@ function DeleteConfirm({ onConfirm, onCancel, loading }: {
   )
 }
 
+// 🔥 NEW: Helper function to convert any URL to production GeM URL
+function getProductionPdfUrl(url: string): string {
+  if (!url) return ''
+  
+  // If it's already a production URL, return it
+  if (url.includes('bidplus.gem.gov.in')) {
+    return url
+  }
+  
+  // Extract bid ID from any URL format
+  // Handles: /showbidDocument/9500337, showbidDocument/9500337, http://localhost:5174/showbidDocument/9500337
+  const match = url.match(/showbidDocument\/(\d+)/)
+  if (match) {
+    const bidId = match[1]
+    return `https://bidplus.gem.gov.in/showbidDocument/${bidId}`
+  }
+  
+  // If no match, try to extract any number that looks like a bid ID (7+ digits)
+  const idMatch = url.match(/\/(\d{7,})/)
+  if (idMatch) {
+    const bidId = idMatch[1]
+    return `https://bidplus.gem.gov.in/showbidDocument/${bidId}`
+  }
+  
+  // Fallback: return as-is
+  return url
+}
+
 export default function GemTenderCard({ tender }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
@@ -144,6 +172,15 @@ export default function GemTenderCard({ tender }: Props) {
         },
       }
     )
+  }
+
+  // 🔥 FIXED: Get the production URL for opening
+  const productionUrl = getProductionPdfUrl(tender.source_url || '')
+
+  // 🔥 FIXED: Handle PDF opening with production URL
+  const handleOpenPdf = () => {
+    if (!productionUrl) return
+    window.open(productionUrl, '_blank', 'noopener,noreferrer')
   }
 
   return (
@@ -242,8 +279,9 @@ export default function GemTenderCard({ tender }: Props) {
             </span>
           ))}
         </div>
+        {/* 🔥 FIXED: Use the handleOpenPdf function with production URL */}
         <button
-          onClick={() => window.open(tender.source_url, '_blank', 'noopener,noreferrer')}
+          onClick={handleOpenPdf}
           className="flex items-center gap-1 text-[11px] text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded transition-colors"
         >
           <ExternalLink size={10} />

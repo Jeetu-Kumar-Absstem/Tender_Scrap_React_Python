@@ -1,4 +1,5 @@
 # scraper/scrapers/type_d.py
+# for type D sites (tender18.com)
 import time
 import csv
 import re
@@ -33,8 +34,8 @@ INCLUDE_KEYWORDS = [
         "mgps maintenance", "psa plant spare parts", "oxygen plant repair maintenance",
         "vpsa", "liquid oxygen", "lox", "Oxygen concentrator", "o2 plant", 
         "Nitrogen concentrator","oxygen gas plant","camc of oxygen plant","camc of nitrogen plant",
-        "Nitrogen gas plant", "gas generation","comprehensive maintenance contract oxygen plant",
-        "comprehensive maintenance contract psa nitrogen plant",
+        "Nitrogen gas plant","comprehensive maintenance contract oxygen plant",
+        "comprehensive maintenance contract psa nitrogen plant","comprehensive annual maintenance contract oxygen plant",
         "nitrogen generator"
     ]
 # Fix Windows console encoding issues

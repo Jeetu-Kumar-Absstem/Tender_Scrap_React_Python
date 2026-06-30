@@ -33,7 +33,6 @@ from .core.supabase_store import create_run, finish_run, get_run_tenders, insert
 from .email.brevo import send_digest
 from .scrapers.type_a import scrape_type_a
 from .scrapers.type_b import scrape_type_b
-from .scrapers.type_c import scrape_type_c
 
 structlog.configure(
     processors=[
@@ -74,8 +73,6 @@ async def _scrape_site(
                 records = await scrape_type_b(site, run_id=run_id, browser=browser)
             elif site.site_type == SiteType.A and site.name == "HLL Lifecare":
                 records = await asyncio.to_thread(scrape_type_a, site, run_id)
-            elif site.site_type == SiteType.C and site.name == "GeM BidPlus":
-                records = await scrape_type_c(site, run_id=run_id)
             else:
                 log.info("site.skipped", site=site.name, type=site.site_type.value)
                 return site, 0, None
@@ -113,7 +110,6 @@ async def _scrape_site(
 async def run_pipeline() -> None:
     sites = (
          [s for s in SITES_BY_TYPE[SiteType.A] if s.name == "HLL Lifecare"]
-        + [s for s in SITES_BY_TYPE[SiteType.C] if s.name == "GeM BidPlus"]
         +SITES_BY_TYPE[SiteType.B]
     )
     log.info("pipeline.start", sites=len(sites), concurrency=CONCURRENCY)

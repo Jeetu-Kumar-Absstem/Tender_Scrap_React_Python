@@ -371,7 +371,7 @@ export default function MorePortalsPage() {
           <div className="flex flex-wrap items-center gap-3">
             {/* Keyword Filter */}
             <div className="flex items-center gap-1.5">
-              <span className="text-xs text-slate-500 font-medium" style={lufgaRegularStyle}>
+              <span className="text-xs text-black-500 font-medium" style={lufgaRegularStyle}>
                 Keyword:
               </span>
               <select

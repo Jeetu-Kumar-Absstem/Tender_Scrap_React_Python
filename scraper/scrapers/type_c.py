@@ -148,9 +148,9 @@ KEYWORD_CATEGORIES = {
 ],
 }
 
-KEYWORD_CATEGORIES = {
-    "nitrogen":["nitrogen generator","nitrogen generator plant"]
-}
+# KEYWORD_CATEGORIES = {
+#     "nitrogen":["nitrogen generator","nitrogen generator plant"]
+# }
 
 # ─── Exclude Keywords ──────────────────────────────────────────────────────
 # If a tender matches an include keyword BUT also contains ANY of these,

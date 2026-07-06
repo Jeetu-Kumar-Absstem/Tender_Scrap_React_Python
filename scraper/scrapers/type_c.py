@@ -101,8 +101,9 @@ KEYWORD_CATEGORIES = {
         "oxygen plant",        # Priority 1 - Used for searching
         "oxygen psa plant",    # Priority 2
         "oxygen gas generation", # Priority 3
-        "oxygen gas generator"  # Priority 4
-            "psa oxygen"
+        "oxygen gas generator",  # Priority 4
+            "psa oxygen",
+            "oxygen generator"
     ],
     "nitrogen": [
         "nitrogen plant",      # Priority 1 - Used for searching
@@ -110,6 +111,7 @@ KEYWORD_CATEGORIES = {
         "nitrogen gas generation", # Priority 3
         "nitrogen gas generator" ,
         "psa nitrogen",
+        "nitrogen generator"
     
     ],
 
@@ -146,6 +148,17 @@ KEYWORD_CATEGORIES = {
 ],
 }
 
+KEYWORD_CATEGORIES = {
+    "nitrogen":["nitrogen generator","nitrogen generator plant"]
+}
+
+# ─── Exclude Keywords ──────────────────────────────────────────────────────
+# If a tender matches an include keyword BUT also contains ANY of these,
+# it will be IGNORED (filtered out).
+
+EXCLUDE_KEYWORDS = [
+    "oem authorization certificate",
+]
 
 OUTPUT_DIR = Path("output")
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -854,6 +867,19 @@ async def scrape_gem():
                                     matched_keyword = priority_keyword
                                     break  # 🛑 Stop checking other keywords
                             
+                            # ─── EXCLUDE KEYWORD FILTER ───────────────────────────
+                            # If a match was found, check if any exclude keyword is also
+                            # present in the PDF — if so, discard this tender.
+                            if matched_keyword:
+                                excluded_by = next(
+                                    (kw for kw in EXCLUDE_KEYWORDS if simple_match(pdf_text, kw)),
+                                    None
+                                )
+                                if excluded_by:
+                                    logger.info(f"      🚫 EXCLUDED! Matched include keyword '{matched_keyword}' "
+                                                f"but also found exclude keyword '{excluded_by}'")
+                                    matched_keyword = None  # Treat as no match
+                            
                             # ─── SAVE OR DISCARD ──────────────────────────────────
                             if matched_keyword:
                                 logger.info(f"      ✅ MATCH FOUND! (keyword: '{matched_keyword}')")
@@ -978,6 +1004,7 @@ if __name__ == '__main__':
     print(f"Categories: {len(KEYWORD_CATEGORIES)}")
     total_keywords = sum(len(kw) for kw in KEYWORD_CATEGORIES.values())
     print(f"Total Keywords: {total_keywords}")
+    print(f"Exclude Keywords: {len(EXCLUDE_KEYWORDS)}")
     print("=" * 60 + "\n")
     
     try:

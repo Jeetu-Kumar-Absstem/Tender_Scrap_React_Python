@@ -74,7 +74,7 @@ function LogPanel({ onClose }: { onClose: () => void }) {
 
 // ─── Sidebar inner content ────────────────────────────────────
 function SidebarContent({
-  isRunning, loading, error, status, trigger, stop,
+  isRunning, loading, statusLoaded, error, status, trigger, stop,
   isDisclaimerMinimized, setIsDisclaimerMinimized,
   isDisclaimerVisible, handleDismiss,
   showDisclaimer,
@@ -92,7 +92,7 @@ function SidebarContent({
     trigger()
   }
 
-  const isBusy = isRunning || loading || pendingStart
+  const isBusy = isRunning || loading || pendingStart || !statusLoaded
 
   const lastSuccess = status?.pipeline?.last_result?.success
   const runStatus   = status?.pipeline?.last_result?.status
@@ -264,7 +264,7 @@ function SidebarContent({
 
 // ─── Main Layout ──────────────────────────────────────────────
 export default function Layout() {
-  const { isRunning, loading, error, status, trigger, stop } = usePipeline()
+  const { isRunning, loading, statusLoaded, error, status, trigger, stop } = usePipeline()
   const [isDisclaimerMinimized, setIsDisclaimerMinimized] = useState(false)
   const [isDisclaimerVisible,   setIsDisclaimerVisible]   = useState(true)
   const [logsOpen, setLogsOpen] = useState(false)
@@ -289,7 +289,7 @@ export default function Layout() {
   }
 
   const sharedProps = {
-    isRunning, loading, error, status, trigger, stop,
+    isRunning, loading, statusLoaded, error, status, trigger, stop,
     isDisclaimerMinimized, setIsDisclaimerMinimized,
     isDisclaimerVisible, handleDismiss, showDisclaimer,
     logsOpen, setLogsOpen,

@@ -1,20 +1,19 @@
-// src/components/tenders/Tender18Card.tsx
+// src/components/tenders/GemTenderCard.tsx
 import { useState, useRef, useEffect } from 'react'
 import { ExternalLink, Calendar, MapPin, Building2, Tag, MoreVertical, CheckCircle2, Star, Trash2, AlertTriangle, X, Loader2, Clock } from 'lucide-react'
 import { format, parseISO, isAfter, startOfDay, isToday } from 'date-fns'
 import { clsx } from 'clsx'
-import { useTender18Actions } from '../../hooks/useTender18'
-import { useArchiveTender18Actions } from '../../hooks/useArchiveTender18'
-import type { Tender18Tender } from '../../hooks/useTender18'
+import { useGemTendersActions, useArchiveGemActions } from '../../hooks/useGemTenders'
+import type { GemTender } from '../../types/gemTender'
 
-interface Props { tender: Tender18Tender }
+interface Props { tender: GemTender }
 
 function ActionMenu({ tender, onClose, onDeleteClick }: {
-  tender: Tender18Tender
+  tender: GemTender
   onClose: () => void
   onDeleteClick: () => void
 }) {
-  const { updateStatus } = useTender18Actions()
+  const { updateStatus } = useGemTendersActions()
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -103,10 +102,38 @@ function DeleteConfirm({ onConfirm, onCancel, loading }: {
   )
 }
 
-export default function Tender18Card({ tender }: Props) {
+// 🔥 NEW: Helper function to convert any URL to production GeM URL
+function getProductionPdfUrl(url: string): string {
+  if (!url) return ''
+  
+  // If it's already a production URL, return it
+  if (url.includes('bidplus.gem.gov.in')) {
+    return url
+  }
+  
+  // Extract bid ID from any URL format
+  // Handles: /showbidDocument/9500337, showbidDocument/9500337, http://localhost:5174/showbidDocument/9500337
+  const match = url.match(/showbidDocument\/(\d+)/)
+  if (match) {
+    const bidId = match[1]
+    return `https://bidplus.gem.gov.in/showbidDocument/${bidId}`
+  }
+  
+  // If no match, try to extract any number that looks like a bid ID (7+ digits)
+  const idMatch = url.match(/\/(\d{7,})/)
+  if (idMatch) {
+    const bidId = idMatch[1]
+    return `https://bidplus.gem.gov.in/showbidDocument/${bidId}`
+  }
+  
+  // Fallback: return as-is
+  return url
+}
+
+export default function GemTenderCard({ tender }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
-  const { archiveAndDelete } = useArchiveTender18Actions()
+  const { archiveAndDelete } = useArchiveGemActions()
 
   const deadlinePast = tender.deadline
     ? isAfter(startOfDay(new Date()), startOfDay(parseISO(tender.deadline)))
@@ -119,10 +146,10 @@ export default function Tender18Card({ tender }: Props) {
   const isDone = tender.user_status === 'done'
   const isStarred = tender.user_status === 'starred'
 
-  // Auto-archive expired tenders instead of silently deleting them
+  // Auto-archive expired tenders
   useEffect(() => {
     if (deadlinePast) {
-      console.log('[Tender18Card] Auto-archiving expired tender:', tender.id)
+      console.log('[GemTenderCard] Auto-archiving expired tender:', tender.id)
       archiveAndDelete.mutate({ tender, reason: 'expired' })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -132,7 +159,7 @@ export default function Tender18Card({ tender }: Props) {
   if (deadlinePast) return null
 
   const handleConfirmDelete = () => {
-    console.log('[Tender18Card] Archiving tender on manual delete:', tender.id)
+    console.log('[GemTenderCard] Archiving tender on manual delete:', tender.id)
     archiveAndDelete.mutate(
       { tender, reason: 'manual_delete' },
       {
@@ -141,10 +168,19 @@ export default function Tender18Card({ tender }: Props) {
           setMenuOpen(false)
         },
         onError: (error) => {
-          console.error('[Tender18Card] Archive failed:', error)
+          console.error('[GemTenderCard] Archive failed:', error)
         },
       }
     )
+  }
+
+  // 🔥 FIXED: Get the production URL for opening
+  const productionUrl = getProductionPdfUrl(tender.source_url || '')
+
+  // 🔥 FIXED: Handle PDF opening with production URL
+  const handleOpenPdf = () => {
+    if (!productionUrl) return
+    window.open(productionUrl, '_blank', 'noopener,noreferrer')
   }
 
   return (
@@ -152,7 +188,7 @@ export default function Tender18Card({ tender }: Props) {
       'bg-white rounded-xl border p-4 transition-all relative',
       isDone && 'opacity-60 border-slate-200',
       isStarred && 'border-amber-200 bg-amber-50/30',
-      !isDone && !isStarred && 'border-slate-200 hover:border-blue-200 hover:shadow-sm',
+      !isDone && !isStarred && 'border-slate-200 hover:border-indigo-200 hover:shadow-sm',
     )}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
@@ -169,11 +205,11 @@ export default function Tender18Card({ tender }: Props) {
                 {tender.reference_number.slice(0, 30)}
               </span>
             )}
-            <span className="text-[11px] font-medium px-2 py-0.5 rounded border bg-purple-50 text-purple-700 border-purple-200">
-              Type D
+            <span className="text-[11px] font-medium px-2 py-0.5 rounded border bg-indigo-50 text-indigo-700 border-indigo-200">
+              GeM BidPlus
             </span>
             <span className="text-[11px] text-slate-500 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded">
-              Tender18
+              Type C
             </span>
             {tender.user_status !== 'active' && (
               <span className={clsx(
@@ -243,9 +279,10 @@ export default function Tender18Card({ tender }: Props) {
             </span>
           ))}
         </div>
+        {/* 🔥 FIXED: Use the handleOpenPdf function with production URL */}
         <button
-          onClick={() => window.open(tender.source_url, '_blank', 'noopener,noreferrer')}
-          className="flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
+          onClick={handleOpenPdf}
+          className="flex items-center gap-1 text-[11px] text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded transition-colors"
         >
           <ExternalLink size={10} />
           Open

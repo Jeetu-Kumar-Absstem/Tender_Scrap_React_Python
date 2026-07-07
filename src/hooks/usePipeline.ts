@@ -1,6 +1,12 @@
 // src/hooks/usePipeline.ts
 import { useState, useEffect, useCallback } from 'react'
-import { triggerPipeline, getPipelineStatus, stopPipeline, type PipelineStatus } from '../lib/pipelineApi'
+import {
+  triggerPipeline,
+  getPipelineStatus,
+  stopPipeline,
+  PipelineAlreadyRunningError,
+  type PipelineStatus,
+} from '../lib/pipelineApi'
 
 const KEEP_ALIVE_INTERVAL_MS = 10 * 60 * 1000 // 10 minutes — prevents Render free tier from sleeping
 
@@ -8,6 +14,11 @@ export function usePipeline() {
   const [status, setStatus]   = useState<PipelineStatus | null>(null)
   const [error, setError]     = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // True once the first status fetch has resolved (success or failure).
+  // Until then we don't know if a pipeline run is already in progress, so
+  // trigger() must refuse to fire — otherwise a click (or any caller) during
+  // that initial window can race ahead of isRunning and hit a 409.
+  const [statusLoaded, setStatusLoaded] = useState(false)
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -16,6 +27,8 @@ export function usePipeline() {
     } catch {
       // API server not running — show offline state
       setStatus(null)
+    } finally {
+      setStatusLoaded(true)
     }
   }, [])
 
@@ -34,15 +47,24 @@ export function usePipeline() {
     return () => clearInterval(keepAlive)
   }, [])
 
+  const isRunning = status?.running ?? false
+
   const trigger = useCallback(async () => {
+    // Guard at the call site: refuse to fire if status hasn't loaded yet
+    // (we don't know real running state), or if we already know it's
+    // running/loading (e.g. double click before the disabled prop re-renders).
+    if (!statusLoaded || isRunning || loading) return
+
     setLoading(true)
     setError(null)
     try {
       await triggerPipeline()
       await fetchStatus()
     } catch (e: any) {
-      if (e.name === 'AbortError') {
-        // Render cold start took too long — ask user to retry
+      if (e instanceof PipelineAlreadyRunningError) {
+        setError('Pipeline is already running.')
+        await fetchStatus() // resync so isRunning reflects backend truth
+      } else if (e.name === 'AbortError') {
         setError('Server is waking up, please try again in a moment.')
       } else {
         setError(e.message)
@@ -50,7 +72,7 @@ export function usePipeline() {
     } finally {
       setLoading(false)
     }
-  }, [fetchStatus])
+  }, [fetchStatus, isRunning, loading, statusLoaded])
 
   const stop = useCallback(async () => {
     setError(null)
@@ -70,7 +92,8 @@ export function usePipeline() {
     status,
     error,
     loading,
-    isRunning: status?.running ?? false,
+    isRunning,
+    statusLoaded,
     trigger,
     stop,
   }

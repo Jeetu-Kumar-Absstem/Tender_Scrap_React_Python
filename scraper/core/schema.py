@@ -54,7 +54,7 @@ INCLUDE_KEYWORDS: list[str] =[
     "psa plant spare parts", "oxygen plant repair maintenance",
     
     # Additional from your INCLUDE_KEYWORDS (merged where applicable)
-    "vpsa", "liquid oxygen", "lox", "oxygen concentrator", "o2 plant", "oxygen gas plant", "gas generation"
+    "vpsa", "liquid oxygen", "oxygen concentrator", "o2 plant", "oxygen gas plant", "gas generation"
     , "nitrogen gas plant","nitrogen concentrator","camc of nitrogen plant","camc of oxygen plant"
 ]
 

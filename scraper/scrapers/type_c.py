@@ -103,7 +103,11 @@ KEYWORD_CATEGORIES = {
         "oxygen gas generation", # Priority 3
         "oxygen gas generator",  # Priority 4
             "psa oxygen",
-            "oxygen generator"
+            "oxygen generation plant",
+            "On-site oxygen generation system",
+            "Oxygen concentrator plant",
+            "District hospital oxygen plant",
+            "Medical college oxygen plant",
     ],
     "nitrogen": [
         "nitrogen plant",      # Priority 1 - Used for searching
@@ -111,7 +115,8 @@ KEYWORD_CATEGORIES = {
         "nitrogen gas generation", # Priority 3
         "nitrogen gas generator" ,
         "psa nitrogen",
-        "nitrogen generator"
+        "nitrogen generation plant",
+        "On-site nitrogen generation system"
     
     ],
 
@@ -144,8 +149,44 @@ KEYWORD_CATEGORIES = {
 "customized amc/cmc for pre-owned products - nitrogen gas plant",
 "customized amc/cmc for pre-owned products - psa oxygen generation plant",
 "customized amc/cmc for pre-owned products - comprehensive annual maintenance contract of psa oxygen generation plant",
-"customized amc/cmc for pre-owned products - mgpl system"
+"amc tender"
 ],
+"Pressure Swing Adsorption plant":[
+    "Pressure Swing Adsorption plant",
+   "Pressure Swing Adsorption oxygen generator",
+    "Pressure Swing Adsorption nitrogen generator",
+],
+
+"medical oxygen plant":[
+    "medical oxygen plant",
+    "medical oxygen generator",
+    "medical oxygen generation plant",
+    "medical oxygen"
+
+],
+
+"industrial oxygen":[
+    "industrial oxygen generator",
+    "industrial nitrogen generator",
+
+],
+"Molecular sieve oxygen plant":[
+    "Molecular sieve oxygen plant",
+    "Molecular sieve refilling"
+],
+"Zeolite molecular sieve plant":[
+    "Zeolite molecular sieve plant",
+    "Zeolite/sieve replacement"
+
+],
+"Carbon molecular sieve nitrogen plant":[
+    "Carbon molecular sieve nitrogen plant"
+],
+"camc":[
+    "camc"
+],
+
+
 }
 
 # KEYWORD_CATEGORIES = {

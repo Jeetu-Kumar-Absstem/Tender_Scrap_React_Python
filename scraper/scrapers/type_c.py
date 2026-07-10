@@ -108,6 +108,7 @@ KEYWORD_CATEGORIES = {
             "Oxygen concentrator plant",
             "District hospital oxygen plant",
             "Medical college oxygen plant",
+            "PM CARES oxygen plant",
     ],
     "nitrogen": [
         "nitrogen plant",      # Priority 1 - Used for searching

@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/api/:path*", "destination": "https://tender-scrap-react-python.onrender.com/api/:path*" },
     { "source": "/(.*)", "destination": "/" }
   ]
 }

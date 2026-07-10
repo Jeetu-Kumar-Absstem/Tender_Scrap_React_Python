@@ -1,5 +1,7 @@
 # scraper/scrapers/type_d.py
-import asyncio
+import time
+import csv
+import re
 import hashlib
 import os
 import re
@@ -10,7 +12,28 @@ from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
 
-# Fix Windows console encoding
+
+INCLUDE_KEYWORDS = [
+        "psa plant", "Oxygen Generation Plant", "oxygen plant", "psa oxygen generation plant",
+        "pressure swing adsorption oxygen", "medical oxygen generation plant", 
+        "oxygen plant sitc", "on-site oxygen generation", "oxygen generator plant",
+        "oxygen gas generator", "psa oxygen", "psa nitrogen plant", 
+        "nitrogen generator", "pressure swing adsorption nitrogen",
+        "nitrogen generation plant", "nitrogen plant sitc", "on-site nitrogen generation",
+        "nitrogen gas generator", "psa nitrogen", "amc psa oxygen plant",
+        "cmc psa oxygen plant", "annual maintenance contract oxygen plant",
+        "camc psa", "comprehensive maintenance contract psa", 
+        "preventive maintenance oxygen generator", "service contract psa plant",
+        "breakdown maintenance oxygen plant", "psa plant amc", "psa plant cmc",
+        "medical gas plant maintenance", "oxygen nitrogen plant service contract",
+        "mgps maintenance", "psa plant spare parts", "oxygen plant repair maintenance",
+        "vpsa", "liquid oxygen", "lox", "Oxygen concentrator", "o2 plant", 
+        "Nitrogen concentrator","oxygen gas plant","camc of oxygen plant","camc of nitrogen plant",
+        "Nitrogen gas plant","comprehensive maintenance contract oxygen plant",
+        "comprehensive maintenance contract psa nitrogen plant","comprehensive annual maintenance contract oxygen plant",
+        "nitrogen generator"
+    ]
+# Fix Windows console encoding issues
 if sys.platform == 'win32':
     try:
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -18,32 +41,32 @@ if sys.platform == 'win32':
         import codecs
         sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')
 
-# --- Imports ---
-INCLUDE_KEYWORDS = [
+# --- Try to import from schema, with fallback ---
+try:
+    from scraper.core.schema import INCLUDE_KEYWORDS
+    from scraper.core.supabase_store import _get_client
+    print(f"[INIT] Successfully imported from scraper.core")
+except ImportError as e:
+    print(f"[WARN] Could not import from scraper.core: {e}")
+    # Fallback keywords
+    INCLUDE_KEYWORDS = [
         "psa plant", "Oxygen Generation Plant", "oxygen plant", "psa oxygen generation plant",
-        "pressure swing adsorption oxygen", "medical oxygen generation plant",
+        "pressure swing adsorption oxygen", "medical oxygen generation plant", 
         "oxygen plant sitc", "on-site oxygen generation", "oxygen generator plant",
-        "oxygen gas generator", "psa oxygen", "psa nitrogen plant",
+        "oxygen gas generator", "psa oxygen", "psa nitrogen plant", 
         "psa nitrogen generator", "pressure swing adsorption nitrogen",
         "nitrogen generation plant", "nitrogen plant sitc", "on-site nitrogen generation",
         "nitrogen gas generator", "psa nitrogen", "amc psa oxygen plant",
         "cmc psa oxygen plant", "annual maintenance contract oxygen plant",
-        "camc psa", "comprehensive maintenance contract psa",
+        "camc psa", "comprehensive maintenance contract", 
         "preventive maintenance oxygen generator", "service contract psa plant",
         "breakdown maintenance oxygen plant", "psa plant amc", "psa plant cmc",
         "medical gas plant maintenance", "oxygen nitrogen plant service contract",
         "mgps maintenance", "psa plant spare parts", "oxygen plant repair maintenance",
-        "vpsa", "liquid oxygen", "lox", "concentrator", "o2 plant",
-        "gas plant", "gas generation","comprehensive maintenance contract oxygen plant",
-        "comprehensive maintenance contract nitrogen plant"
+        "vpsa", "liquid oxygen", "lox", "concentrator", "o2 plant", 
+        "gas plant", "gas generation"
     ]
-try:
-    # from scraper.core.schema import INCLUDE_KEYWORDS
-    from scraper.core.supabase_store import _get_client
-    print("[INIT] Successfully imported from scraper.core")
-except ImportError as e:
-    print(f"[WARN] Could not import from scraper.core: {e}")
-
+    
     def _get_client():
         try:
             from supabase import create_client
@@ -58,12 +81,17 @@ except ImportError as e:
             print(f"[WARN] Failed to create Supabase client: {e}")
         return None
 
-# --- Config ---
-BASE_URL   = "https://tender18.com/"
-MAX_PAGES  = 3
-PAGE_DELAY = 2
+# --- Configuration ---
+BASE_URL = "https://tender18.com/"
+WAIT_TIME = 10
+PAGE_LOAD_DELAY = 2
+MAX_PAGES = 3  # Number of pages to scrape per keyword
 
-KEYWORDS = INCLUDE_KEYWORDS
+# Use keywords from schema - filter for PSA related
+KEYWORDS = [kw for kw in INCLUDE_KEYWORDS if any(
+    term in kw.lower() for term in ['psa', 'oxygen', 'nitrogen', 'medical', 'gas', 'o2', 'vpsa', 'lox']
+)]
+
 if not KEYWORDS:
     KEYWORDS = ["psa plant", "oxygen psa plant", "medical oxygen generation plant"]
     print("[WARN] No matching keywords found, using fallback")
@@ -204,9 +232,8 @@ def save_to_tender18_table(tender_data_list: list) -> int:
 
     return saved_count
 
-
-# --- Playwright scraper ---
-async def scrape_all() -> list:
+def scrape_keyword_with_pagination(keyword, max_pages=MAX_PAGES):
+    """Scrape a single keyword with pagination support."""
     all_results = []
 
     async with async_playwright() as pw:
@@ -396,9 +423,10 @@ async def main():
     print(f"[DATA] {len(unique_list)} unique tenders after dedup")
 
     saved = save_to_tender18_table(unique_list)
-    print(f"[OK] Saved {saved} new tenders to database.")
-
-    print("\n[Sample:]")
+    print(f"[OK] Saved {saved} tenders to database.")
+    
+    # Print sample
+    print("\n[Sample of scraped data:]")
     for i, item in enumerate(unique_list[:5]):
         print(f"  {i+1}. {safe_str(item.get('title'))[:60]} [{item.get('keyword')}]")
     if len(unique_list) > 5:

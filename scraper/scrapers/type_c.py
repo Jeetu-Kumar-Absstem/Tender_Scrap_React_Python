@@ -1,12 +1,11 @@
 """
 type_c.py
 GeM Tender Scraper with Supabase Integration
-- OPTIMIZED: ONE search per category using CATEGORY NAME
-- Each PDF downloaded once and checked against ALL keywords
-- Priority matching: First matching keyword (in priority order) is saved
-- No re-searching, no re-downloading, no restarting from page 1
-- Multiple PDF library support
-- Supabase integration with CSV fallback
+- COMPLETE FLOW: Extract ref number BEFORE PDF download
+- Store ALL reference numbers in processed_references
+- Store ONLY matching tenders in gem_tenders
+- Skip already processed bids (no PDF download, no keyword check)
+- Bulk insert with counters
 """
 
 import asyncio
@@ -82,120 +81,113 @@ except ImportError:
 
 # ─── Configuration ──────────────────────────────────────────────────────
 
-# ─── Categorized Keywords with Priority ──────────────────────────────
-
-# Each category has keywords in priority order
-# We search ONCE per category using the CATEGORY NAME
-# Then check ALL keywords against each PDF
-
-KEYWORD_CATEGORIES = {
-    "psa": [
-        "psa plant",           # Priority 1 - Used for searching
-        "psa nitrogen plant",  # Priority 2
-        "psa oxygen plant",    # Priority 3
-        "psa amc",            # Priority 4
-        "psa cmc",            # Priority 5
-        "psa plant cmc"       # Priority 6
-    ],
-    "oxygen": [
-        "oxygen plant",        # Priority 1 - Used for searching
-        "oxygen psa plant",    # Priority 2
-        "oxygen gas generation", # Priority 3
-        "oxygen gas generator",  # Priority 4
-            "psa oxygen",
-            "oxygen generation plant",
-            "On-site oxygen generation system",
-            "Oxygen concentrator plant",
-            "District hospital oxygen plant",
-            "Medical college oxygen plant",
-    ],
-    "nitrogen": [
-        "nitrogen plant",      # Priority 1 - Used for searching
-        "nitrogen psa plant",  # Priority 2
-        "nitrogen gas generation", # Priority 3
-        "nitrogen gas generator" ,
-        "psa nitrogen",
-        "nitrogen generation plant",
-        "On-site nitrogen generation system"
-    
-    ],
-
-    "comprehensive maintenance contract":[
-        # need to refine the keywords probability is so less with these keywords
-"comprehensive maintenance contract psa plant",
-"comprehensive maintenance contract oxygen plant",
-"comprehensive maintenance contract nitrogen plant",
-"annual maintenance contract psa plant",
-"annual maintenance contract oxygen plant",
-"annual maintenance contract nitrogen plant",
-"Comprehensive annual maintenance contract of psa oxygen generation plant",
-"Comprehensive annual maintenance contract psa plant",
-"Comprehensive annual maintenance contract nitrogen plant",
-"preventive maintenance oxygen generator",
-"oxygen plant repair maintenance",
-"nitrogen plant repair maintenance",
-"amc psa oxygen plant",
-"cmc psa oxygen plant",
-"amc psa nitrogen plant",
-"cmc psa nitrogen plant",
-"breakdown maintenance oxygen plant",
-"breakdown maintenance nitrogen plant"
-"breakdown maintenance psa plant"
-"amc psa plany",
-"cmc psa plant",
-"customized amc/cmc for pre-owned products - psa plant",
-"customized amc/cmc for pre-owned products - oxygen psa plant",
-"customized amc/cmc for pre-owned products - nitrogen psa plant",
-"customized amc/cmc for pre-owned products - nitrogen gas plant",
-"customized amc/cmc for pre-owned products - psa oxygen generation plant",
-"customized amc/cmc for pre-owned products - comprehensive annual maintenance contract of psa oxygen generation plant",
-"amc tender"
-],
-"Pressure Swing Adsorption plant":[
-    "Pressure Swing Adsorption plant",
-   "Pressure Swing Adsorption oxygen generator",
-    "Pressure Swing Adsorption nitrogen generator",
-],
-
-"medical oxygen plant":[
-    "medical oxygen plant",
-    "medical oxygen generator",
-    "medical oxygen generation plant",
-    "medical oxygen"
-
-],
-
-"industrial oxygen":[
-    "industrial oxygen generator",
-    "industrial nitrogen generator",
-
-],
-"Molecular sieve oxygen plant":[
-    "Molecular sieve oxygen plant",
-    "Molecular sieve refilling"
-],
-"Zeolite molecular sieve plant":[
-    "Zeolite molecular sieve plant",
-    "Zeolite/sieve replacement"
-
-],
-"Carbon molecular sieve nitrogen plant":[
-    "Carbon molecular sieve nitrogen plant"
-],
-"camc":[
-    "camc"
-],
-
-
-}
-
 # KEYWORD_CATEGORIES = {
-#     "nitrogen":["nitrogen generator","nitrogen generator plant"]
+#     "psa": [
+#         "psa plant",
+#         "psa nitrogen plant",
+#         "psa oxygen plant",
+#         "psa amc",
+#         "psa cmc",
+#         "psa plant cmc"
+#     ],
+#     "oxygen": [
+#         "oxygen plant",
+#         "oxygen psa plant",
+#         "oxygen gas generation",
+#         "oxygen gas generator",
+#         "psa oxygen",
+#         "oxygen generation plant",
+#         "On-site oxygen generation system",
+#         "Oxygen concentrator plant",
+#         "District hospital oxygen plant",
+#         "Medical college oxygen plant",
+#     ],
+#     "nitrogen": [
+#         "nitrogen plant",
+#         "nitrogen psa plant",
+#         "nitrogen gas generation",
+#         "nitrogen gas generator",
+#         "psa nitrogen",
+#         "nitrogen generation plant",
+#         "On-site nitrogen generation system"
+#     ],
+#     "comprehensive maintenance contract": [
+#         "comprehensive maintenance contract psa plant",
+#         "comprehensive maintenance contract oxygen plant",
+#         "comprehensive maintenance contract nitrogen plant",
+#         "annual maintenance contract psa plant",
+#         "annual maintenance contract oxygen plant",
+#         "annual maintenance contract nitrogen plant",
+#         "Comprehensive annual maintenance contract of psa oxygen generation plant",
+#         "Comprehensive annual maintenance contract psa plant",
+#         "Comprehensive annual maintenance contract nitrogen plant",
+#         "preventive maintenance oxygen generator",
+#         "oxygen plant repair maintenance",
+#         "nitrogen plant repair maintenance",
+#         "amc psa oxygen plant",
+#         "cmc psa oxygen plant",
+#         "amc psa nitrogen plant",
+#         "cmc psa nitrogen plant",
+#         "breakdown maintenance oxygen plant",
+#         "breakdown maintenance nitrogen plant",
+#         "breakdown maintenance psa plant",
+#         "amc psa plany",
+#         "cmc psa plant",
+#         "customized amc/cmc for pre-owned products - psa plant",
+#         "customized amc/cmc for pre-owned products - oxygen psa plant",
+#         "customized amc/cmc for pre-owned products - nitrogen psa plant",
+#         "customized amc/cmc for pre-owned products - nitrogen gas plant",
+#         "customized amc/cmc for pre-owned products - psa oxygen generation plant",
+#         "customized amc/cmc for pre-owned products - comprehensive annual maintenance contract of psa oxygen generation plant",
+#         "amc tender"
+#     ],
+#     "Pressure Swing Adsorption plant": [
+#         "Pressure Swing Adsorption plant",
+#         "Pressure Swing Adsorption oxygen generator",
+#         "Pressure Swing Adsorption nitrogen generator",
+#     ],
+#     "medical oxygen plant": [
+#         "medical oxygen plant",
+#         "medical oxygen generator",
+#         "medical oxygen generation plant",
+#         "medical oxygen"
+#     ],
+#     "industrial oxygen": [
+#         "industrial oxygen generator",
+#         "industrial nitrogen generator",
+#     ],
+#     "Molecular sieve oxygen plant": [
+#         "Molecular sieve oxygen plant",
+#         "Molecular sieve refilling"
+#     ],
+#     "Zeolite molecular sieve plant": [
+#         "Zeolite molecular sieve plant",
+#         "Zeolite/sieve replacement"
+#     ],
+#     "Carbon molecular sieve nitrogen plant": [
+#         "Carbon molecular sieve nitrogen plant"
+#     ],
+#     "camc": [
+#         "camc"
+#     ],
 # }
 
+KEYWORD_CATEGORIES = {
+ "oxygen": [
+        "oxygen plant",
+        "oxygen psa plant",
+        "oxygen gas generation",
+        "oxygen gas generator",
+        "psa oxygen",
+        "oxygen generation plant",
+        "On-site oxygen generation system",
+        "Oxygen concentrator plant",
+        "District hospital oxygen plant",
+        "Medical college oxygen plant",
+    ],
+}
+
 # ─── Exclude Keywords ──────────────────────────────────────────────────────
-# If a tender matches an include keyword BUT also contains ANY of these,
-# it will be IGNORED (filtered out).
 
 EXCLUDE_KEYWORDS = [
     "oem authorization certificate",
@@ -238,13 +230,6 @@ def _normalize_date(raw: str | None) -> str | None:
 
 def generate_url_hash(url: str) -> str:
     return hashlib.md5(url.encode('utf-8')).hexdigest()
-
-def _build_organization(department: str | None, organization: str | None) -> str | None:
-    dept = _safe_text(department)
-    org = _safe_text(organization)
-    if dept and org:
-        return f"{dept} | {org}"
-    return dept or org
 
 def _safe_text(value: str | None) -> str | None:
     if not value:
@@ -319,9 +304,7 @@ def clean_title(title: str) -> str:
 # ─── URL Fix Function ──────────────────────────────────────────────────
 
 def get_pdf_url(bid_url: str) -> str:
-    """
-    Extract bid ID and build PRODUCTION URL.
-    """
+    """Extract bid ID and build PRODUCTION URL."""
     if not bid_url:
         return ""
     
@@ -370,10 +353,7 @@ def get_pdf_url(bid_url: str) -> str:
 # ─── PDF Extraction ─────────────────────────────────────────────────────
 
 def extract_pdf_text(pdf_url: str) -> tuple[str, str]:
-    """
-    Extract text from PDF using available library.
-    Returns: (text, method_used)
-    """
+    """Extract text from PDF using available library."""
     if PDF_LIB is None:
         return "", "No PDF library available"
     
@@ -518,9 +498,7 @@ def extract_pdf_pdfplumber(content):
 # ─── Exact Phrase Matching Functions ──────────────────────────────────
 
 def exact_phrase_match(text: str, keyword: str) -> bool:
-    """
-    Check if the exact keyword phrase exists in the text.
-    """
+    """Check if the exact keyword phrase exists in the text."""
     if not text or not keyword:
         return False
     
@@ -534,85 +512,129 @@ def simple_match(text: str, keyword: str) -> bool:
     """Uses exact phrase matching."""
     return exact_phrase_match(text, keyword)
 
-# ─── Save Function ──────────────────────────────────────────────────
+# ─── Database Functions ──────────────────────────────────────────────────
 
-def save_to_gem_table(tender_data_list: list) -> int:
-    """Save scraped tenders using ONLY webpage data for titles."""
-    saved_count = 0
-    client = _get_client()
-    
+def load_processed_reference_numbers(client) -> set:
+    """
+    Load ALL processed reference numbers from processed_references table.
+    ONE QUERY at script startup.
+    """
     if client is None:
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        filename = OUTPUT_DIR / f'gem_results_{timestamp}.csv'
-        if tender_data_list:
-            keys = tender_data_list[0].keys()
-            with open(filename, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.DictWriter(f, fieldnames=keys)
-                writer.writeheader()
-                writer.writerows(tender_data_list)
-            print(f"[OK] Data saved to '{filename}' as fallback")
-        return len(tender_data_list)
+        print("[DB] No Supabase client - cannot load processed references")
+        return set()
     
-    for data in tender_data_list:
+    try:
+        print("[DB] Loading processed reference numbers from database...")
+        result = client.table("processed_references").select("reference_number").execute()
+        
+        processed = set()
+        for row in (result.data or []):
+            ref = row.get("reference_number")
+            if ref:
+                processed.add(ref)
+        
+        print(f"[DB] ✅ Loaded {len(processed)} processed reference numbers")
+        return processed
+        
+    except Exception as e:
+        print(f"[DB] ⚠️ Failed to load processed references: {e}")
+        return set()
+
+def bulk_insert_processed_references(ref_numbers: list, client, batch_size: int = 100) -> int:
+    """
+    Bulk insert reference numbers into processed_references table.
+    """
+    if not ref_numbers or not client:
+        return 0
+    
+    # Prepare data for insertion
+    rows = [{"reference_number": ref} for ref in ref_numbers]
+    total_inserted = 0
+    
+    for i in range(0, len(rows), batch_size):
+        batch = rows[i:i + batch_size]
         try:
-            if not data.get('bid_url'):
-                print(f"   [WARN] Skipping - no URL")
-                continue
-            
-            title = data.get('web_category') or data.get('items', '')
-            title = clean_title(title)
-            
-            if not title or title == 'N/A' or len(title) < 5:
-                bid_num = data.get('bid_number', '')
-                org = data.get('organization', '')
-                title = f"{bid_num} - {org}" if org else bid_num
-            
-            if not title:
-                title = 'Untitled'
-            
-            url_hash = generate_url_hash(data['bid_url'])
-            
-            try:
-                check_res = client.table("gem_tenders").select("id").eq("url_hash", url_hash).execute()
-                if check_res.data and len(check_res.data) > 0:
-                    print(f"   [SKIP] Duplicate: {title[:40]}...")
-                    continue
-            except Exception as e:
-                print(f"   [WARN] Duplicate check failed: {e}")
-            
-            organization = data.get('organization') or data.get('department')
-            
-            matched_keyword = data.get('matched_keyword', '')
-            matched_category = data.get('matched_category', '')
-            
-            row = {
-                "title": title,
-                "reference_number": data.get('bid_number'),
-                "organization": organization,
-                "deadline": _normalize_date(data.get('end_date')),
-                "estimated_value": None,
-                "location": None,
-                "source_url": data.get('bid_url'),
-                "url_hash": url_hash,
-                "keywords_matched": [matched_keyword] if matched_keyword else [],
-                "matched_category": matched_category,
-                "scraped_at": datetime.now(timezone.utc).isoformat(),
-            }
-            
-            try:
-                res = client.table("gem_tenders").insert(row).execute()
-                if res.data and len(res.data) > 0:
-                    saved_count += 1
-                    print(f"   [OK] Saved: {title[:50]}... (Category: {matched_category})")
-                else:
-                    print(f"   [WARN] Failed to save: {title[:50]}")
-            except Exception as e:
-                print(f"   [ERROR] Insert failed: {e}")
-                
+            result = client.table("processed_references").insert(batch).execute()
+            inserted = len(result.data or [])
+            total_inserted += inserted
+            print(f"[DB] ✅ Inserted {inserted} reference numbers into processed_references")
         except Exception as e:
-            print(f"   [ERROR] Error saving tender: {e}")
+            print(f"[DB] ⚠️ Bulk insert into processed_references failed: {e}")
+            # Fallback: Try individual inserts
+            for row in batch:
+                try:
+                    client.table("processed_references").insert(row).execute()
+                    total_inserted += 1
+                except Exception as inner_e:
+                    print(f"[DB] ⚠️ Failed to insert reference {row['reference_number']}: {inner_e}")
     
-    return saved_count
+    return total_inserted
+
+def bulk_insert_tenders(tender_list: list, client, batch_size: int = 50) -> int:
+    """
+    Insert tenders into gem_tenders table in bulk batches.
+    """
+    if not tender_list or not client:
+        return 0
+    
+    total_inserted = 0
+    
+    for i in range(0, len(tender_list), batch_size):
+        batch = tender_list[i:i + batch_size]
+        try:
+            result = client.table("gem_tenders").insert(batch).execute()
+            inserted = len(result.data or [])
+            total_inserted += inserted
+            print(f"[DB] ✅ Bulk inserted {inserted} tenders (batch {i//batch_size + 1})")
+        except Exception as e:
+            print(f"[DB] ⚠️ Bulk insert into gem_tenders failed: {e}")
+            # Fallback: Try individual inserts
+            for tender in batch:
+                try:
+                    client.table("gem_tenders").insert(tender).execute()
+                    total_inserted += 1
+                except Exception as inner_e:
+                    print(f"[DB] ⚠️ Failed to insert tender {tender.get('reference_number', 'unknown')}: {inner_e}")
+    
+    return total_inserted
+
+def prepare_tender_data(raw_data: dict) -> dict:
+    """
+    Prepare tender data for insertion matching the gem_tenders table schema.
+    """
+    title = raw_data.get('web_category') or raw_data.get('items', '')
+    title = clean_title(title)
+    
+    if not title or title == 'N/A' or len(title) < 5:
+        bid_num = raw_data.get('bid_number', '')
+        org = raw_data.get('organization', '')
+        title = f"{bid_num} - {org}" if org else bid_num
+    
+    if not title:
+        title = 'Untitled'
+    
+    bid_number = raw_data.get('bid_number')
+    bid_url = raw_data.get('bid_url')
+    url_hash = generate_url_hash(bid_url) if bid_url else None
+    
+    organization = raw_data.get('organization') or raw_data.get('department')
+    matched_keyword = raw_data.get('matched_keyword', '')
+    matched_category = raw_data.get('matched_category', '')
+    
+    return {
+        "title": title,
+        "reference_number": bid_number,
+        "organization": organization,
+        "location": None,
+        "deadline": _normalize_date(raw_data.get('end_date')),
+        "estimated_value": None,
+        "source_url": bid_url,
+        "url_hash": url_hash,
+        "keywords_matched": [matched_keyword] if matched_keyword else [],
+        "matched_category": matched_category,
+        "user_status": "active",
+        "scraped_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 def archive_expired_gem_tenders(client):
     """Archive expired tenders from gem_tenders table."""
@@ -747,53 +769,65 @@ async def _go_to_next_page(page) -> bool:
 
 async def scrape_gem():
     """
-    OPTIMIZED SCRAPER - ONE SEARCH PER CATEGORY USING CATEGORY NAME:
+    COMPLETE FLOW - Extract ref number BEFORE PDF download:
     
-    For each category:
-        1. Search using the CATEGORY NAME (e.g., "psa", "oxygen", "nitrogen")
-        2. Go through ALL pages and ALL PDFs
-        3. For each PDF: Download ONCE, check ALL keywords in category
-        4. Stop checking keywords at first match (priority order)
-        5. Save if match found, discard if no match
-        6. Move to next category
-    
-    Benefits:
-        - Only ONE search per category using category name
-        - Each PDF downloaded ONCE
-        - All keywords checked against each PDF
-        - No re-downloading
-        - No restarting from page 1
-        - Much faster!
+    1. Load ALL processed references from DB (ONE query)
+    2. For each bid:
+       a. Extract bid number from HTML (BEFORE PDF download)
+       b. Check if in processed_refs (memory lookup - NO DB query)
+       c. If exists → SKIP (NO PDF download, NO keyword check)
+       d. If new:
+          - Download PDF, check keywords
+          - ALWAYS add to ref_batch (for processed_references)
+          - ONLY if match: add to tender_batch (for gem_tenders)
+    3. Bulk insert both tables
+    4. Show counter: How many new references added
     """
     
     logger.info("=" * 60)
-    logger.info("GeM Tender Scraper with Supabase")
+    logger.info("GeM Tender Scraper - Extract Ref BEFORE PDF Download")
     logger.info(f"Categories: {len(KEYWORD_CATEGORIES)}")
     total_keywords = sum(len(kw) for kw in KEYWORD_CATEGORIES.values())
     logger.info(f"Total Keywords: {total_keywords}")
     logger.info(f"PDF Library: {PDF_LIB_NAME or 'None'}")
     logger.info("=" * 60)
     
-    all_results = []
-    # Track processed bid URLs globally to avoid duplicates across categories
-    processed_bids_global = set()
+    # ─── Initialize Supabase ──────────────────────────────────────────
+    client = _get_client()
+    
+    # ONE QUERY: Load ALL processed references
+    processed_refs = load_processed_reference_numbers(client)
+    initial_ref_count = len(processed_refs)
+    print(f"[INIT] {initial_ref_count} processed reference numbers loaded into memory")
+    
+    # Track session processing
+    processed_in_session = set()
+    
+    # Batch buffers
+    ref_batch = []        # ALL references (matched + unmatched)
+    tender_batch = []     # ONLY matched tenders
+    REF_BATCH_SIZE = 100
+    TENDER_BATCH_SIZE = 50
+    
+    # Statistics
+    total_bids_seen = 0
+    total_bids_skipped = 0
+    total_new_refs = 0
+    total_matches_found = 0
+    total_refs_inserted = 0
+    total_tenders_inserted = 0
+    total_pdfs_downloaded = 0
     
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(
             headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-blink-features=AutomationControlled",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-            ]
+            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"]
         )
         context = await browser.new_context(
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36',
             viewport={'width': 1920, 'height': 1080},
             locale='en-IN',
             timezone_id='Asia/Kolkata',
-            ignore_https_errors=True,
         )
         page = await context.new_page()
         
@@ -802,18 +836,15 @@ async def scrape_gem():
             await page.goto('https://bidplus.gem.gov.in/all-bids', wait_until='domcontentloaded')
             await asyncio.sleep(3)
             
-            # ─── Process each category - ONE SEARCH PER CATEGORY ──────────────
             for category, keywords in KEYWORD_CATEGORIES.items():
-                # Use the CATEGORY NAME as the search term
-                search_term = category  # "psa", "oxygen", "nitrogen"
+                search_term = category
                 
                 logger.info(f"\n{'='*60}")
                 logger.info(f"🎯 PROCESSING CATEGORY: '{category.upper()}'")
-                logger.info(f"   Search Term: '{search_term}' (category name)")
-                logger.info(f"   All Keywords to check: {keywords}")
+                logger.info(f"   Search Term: '{search_term}'")
                 logger.info(f"{'='*60}")
                 
-                # ─── Search using the category name ──────────────────────────
+                # Search
                 search_input = await page.query_selector('#searchBid')
                 if not search_input:
                     logger.error("  ❌ Search input not found")
@@ -832,18 +863,19 @@ async def scrape_gem():
                 await asyncio.sleep(3)
                 
                 page_num = 1
+                category_seen = 0
+                category_skipped = 0
+                category_new = 0
                 category_matches = 0
-                pdf_count = 0
+                category_pdfs = 0
                 
-                # ─── Process ALL pages for this category ──────────────────────
                 while True:
                     cards = await page.query_selector_all('#bidCard .card')
                     logger.info(f"  📄 Page {page_num}: Found {len(cards)} bids")
                     
-                    # Process each bid on this page
                     for idx, card in enumerate(cards, 1):
                         try:
-                            # Get bid information
+                            # ─── STEP 1: Extract bid number from HTML ──────────
                             bid_elem = await card.query_selector('a.bid_no_hover')
                             if not bid_elem:
                                 continue
@@ -851,15 +883,32 @@ async def scrape_gem():
                             bid_number = (await bid_elem.text_content() or "").strip()
                             bid_url = await bid_elem.get_attribute('href') or ""
                             
-                            # Skip if already processed globally
-                            if bid_url in processed_bids_global:
-                                logger.info(f"    [{idx}] {bid_number} - Already processed globally, skipping")
+                            total_bids_seen += 1
+                            category_seen += 1
+                            
+                            # ─── STEP 2: Check if already processed ────────────
+                            # Using in-memory set - NO DATABASE QUERY!
+                            if bid_number and bid_number in processed_refs:
+                                logger.info(f"    [{idx}] {bid_number} - ✅ Already processed, skipping (NO PDF download)")
+                                category_skipped += 1
+                                total_bids_skipped += 1
                                 continue
                             
-                            # Build PDF URL
+                            if bid_url in processed_in_session:
+                                logger.info(f"    [{idx}] {bid_number} - Already in session, skipping")
+                                category_skipped += 1
+                                total_bids_skipped += 1
+                                continue
+                            
+                            # ─── STEP 3: NEW BID - Process it ──────────────────
+                            logger.info(f"    [{idx}] {bid_number} - 🔄 NEW bid, processing...")
+                            category_new += 1
+                            total_new_refs += 1
+                            
+                            # Get PDF URL
                             pdf_url = get_pdf_url(bid_url)
                             
-                            # Get web category (title source)
+                            # Get web category
                             item_elem = await card.query_selector('.card-body .col-md-4 .row a')
                             web_category = ""
                             if item_elem:
@@ -872,7 +921,7 @@ async def scrape_gem():
                             end_elem = await card.query_selector('.end_date')
                             end_date = await end_elem.text_content() if end_elem else ""
                             
-                            # Get department/organization
+                            # Get organization
                             department = ""
                             organization = ""
                             dept_rows = await card.query_selector_all('.card-body .col-md-5 .row')
@@ -882,50 +931,59 @@ async def scrape_gem():
                                 department = lines[0] if lines else ""
                                 organization = lines[1] if len(lines) > 1 else ""
                             
-                            logger.info(f"    [{idx}] {bid_number}")
                             logger.info(f"      📝 Web Category: {web_category[:60]}...")
                             
                             if not pdf_url:
-                                logger.info(f"      ⚠️ No valid PDF URL")
+                                logger.info(f"      ⚠️ No valid PDF URL - storing reference anyway")
+                                # Still add reference so we don't retry
+                                ref_batch.append(bid_number)
+                                processed_refs.add(bid_number)
+                                processed_in_session.add(bid_url)
                                 continue
                             
-                            # ─── DOWNLOAD PDF ONCE ──────────────────────────────
+                            # ─── STEP 4: Download PDF ──────────────────────────
                             logger.info(f"      ⬇️  Downloading PDF...")
                             pdf_text, method = extract_pdf_text(pdf_url)
                             
                             if not pdf_text:
-                                logger.info(f"      ❌ PDF extraction failed: {method}")
+                                logger.info(f"      ❌ PDF extraction failed: {method} - storing reference anyway")
+                                # Still add reference so we don't retry
+                                ref_batch.append(bid_number)
+                                processed_refs.add(bid_number)
+                                processed_in_session.add(bid_url)
                                 continue
                             
-                            pdf_count += 1
+                            category_pdfs += 1
+                            total_pdfs_downloaded += 1
                             logger.info(f"      ✅ PDF extracted ({len(pdf_text)} chars)")
                             
-                            # ─── CHECK ALL KEYWORDS IN CATEGORY ──────────────────
-                            # Check in priority order, stop at first match
+                            # ─── STEP 5: Check keywords ─────────────────────────
                             matched_keyword = None
                             for priority_keyword in keywords:
                                 if simple_match(pdf_text, priority_keyword):
                                     matched_keyword = priority_keyword
-                                    break  # 🛑 Stop checking other keywords
+                                    break
                             
-                            # ─── EXCLUDE KEYWORD FILTER ───────────────────────────
-                            # If a match was found, check if any exclude keyword is also
-                            # present in the PDF — if so, discard this tender.
+                            # ─── STEP 6: Exclude keyword filter ────────────────
                             if matched_keyword:
                                 excluded_by = next(
                                     (kw for kw in EXCLUDE_KEYWORDS if simple_match(pdf_text, kw)),
                                     None
                                 )
                                 if excluded_by:
-                                    logger.info(f"      🚫 EXCLUDED! Matched include keyword '{matched_keyword}' "
-                                                f"but also found exclude keyword '{excluded_by}'")
-                                    matched_keyword = None  # Treat as no match
+                                    logger.info(f"      🚫 EXCLUDED! '{matched_keyword}' but found '{excluded_by}'")
+                                    matched_keyword = None
                             
-                            # ─── SAVE OR DISCARD ──────────────────────────────────
+                            # ─── STEP 7: ALWAYS add reference ───────────────────
+                            ref_batch.append(bid_number)
+                            processed_refs.add(bid_number)
+                            processed_in_session.add(bid_url)
+                            
+                            # ─── STEP 8: ONLY if match, add tender ─────────────
                             if matched_keyword:
                                 logger.info(f"      ✅ MATCH FOUND! (keyword: '{matched_keyword}')")
                                 
-                                all_results.append({
+                                raw_data = {
                                     'bid_number': bid_number,
                                     'bid_url': bid_url,
                                     'pdf_url': pdf_url,
@@ -937,19 +995,37 @@ async def scrape_gem():
                                     'organization': organization,
                                     'end_date': end_date.strip() if end_date else "",
                                     'scraped_at': datetime.now().isoformat()
-                                })
+                                }
                                 
-                                processed_bids_global.add(bid_url)
+                                tender_data = prepare_tender_data(raw_data)
+                                tender_batch.append(tender_data)
                                 category_matches += 1
+                                total_matches_found += 1
+                                
+                                # Flush tender batch if full
+                                if len(tender_batch) >= TENDER_BATCH_SIZE:
+                                    print(f"\n[DB] 🔄 Flushing {len(tender_batch)} tenders...")
+                                    saved = bulk_insert_tenders(tender_batch, client)
+                                    total_tenders_inserted += saved
+                                    tender_batch = []
                             else:
-                                logger.info(f"      ❌ No match found for any keyword in category '{category}'")
+                                logger.info(f"      ❌ No match found - reference stored")
                             
-                            # PDF text automatically discarded when loop continues
+                            # ─── STEP 9: Flush reference batch if full ──────────
+                            if len(ref_batch) >= REF_BATCH_SIZE:
+                                print(f"\n[DB] 🔄 Flushing {len(ref_batch)} references...")
+                                saved = bulk_insert_processed_references(ref_batch, client)
+                                total_refs_inserted += saved
+                                ref_batch = []
                             
                         except Exception as e:
                             logger.error(f"      Error processing bid: {e}")
+                            # Still try to store reference if we have bid_number
+                            if bid_number:
+                                ref_batch.append(bid_number)
+                                processed_refs.add(bid_number)
                     
-                    # ─── Check if we should go to next page ──────────────────
+                    # ─── Next page ────────────────────────────────────────────
                     if not await _has_next_page(page):
                         break
                     
@@ -960,88 +1036,83 @@ async def scrape_gem():
                     await asyncio.sleep(1)
                 
                 logger.info(f"\n  📈 Category '{category.upper()}' summary:")
-                logger.info(f"     Total PDFs checked: {pdf_count}")
-                logger.info(f"     Total matches found: {category_matches}")
+                logger.info(f"     Total bids seen: {category_seen}")
+                logger.info(f"     Bids skipped (already processed): {category_skipped}")
+                logger.info(f"     New bids processed: {category_new}")
+                logger.info(f"     PDFs downloaded: {category_pdfs}")
+                logger.info(f"     Matches found: {category_matches}")
                 
-                # ─── Delay between categories ─────────────────────────────────
+                # ─── Flush category remaining ──────────────────────────────────
+                if ref_batch:
+                    print(f"\n[DB] 🔄 Flushing {len(ref_batch)} remaining references...")
+                    saved = bulk_insert_processed_references(ref_batch, client)
+                    total_refs_inserted += saved
+                    ref_batch = []
+                
+                if tender_batch:
+                    print(f"\n[DB] 🔄 Flushing {len(tender_batch)} remaining tenders...")
+                    saved = bulk_insert_tenders(tender_batch, client)
+                    total_tenders_inserted += saved
+                    tender_batch = []
+                
                 if list(KEYWORD_CATEGORIES.keys())[-1] != category:
-                    logger.info(f"\n⏳ Waiting 3 seconds before next category...")
                     await asyncio.sleep(3)
                 
         except Exception as e:
             logger.error(f"Scraping error: {e}")
         
         finally:
+            # ─── Final flush ──────────────────────────────────────────────────
+            if ref_batch:
+                print(f"\n[DB] 🔄 Final flush of {len(ref_batch)} references...")
+                saved = bulk_insert_processed_references(ref_batch, client)
+                total_refs_inserted += saved
+                ref_batch = []
+            
+            if tender_batch:
+                print(f"\n[DB] 🔄 Final flush of {len(tender_batch)} tenders...")
+                saved = bulk_insert_tenders(tender_batch, client)
+                total_tenders_inserted += saved
+                tender_batch = []
+            
             await context.close()
             await browser.close()
     
-    # ─── Save Data ──────────────────────────────────────────────────────────
+    # ─── Final Summary ──────────────────────────────────────────────────────
     
-    if all_results:
-        print(f"\n[DATA] Total matches found: {len(all_results)}")
-        
-        # Remove duplicates by URL
-        unique_tenders = {}
-        for tender in all_results:
-            url = tender.get('bid_url')
-            if url and url not in unique_tenders:
-                unique_tenders[url] = tender
-        
-        unique_list = list(unique_tenders.values())
-        print(f"[DATA] {len(unique_list)} unique bids after deduplication")
-        
-        # Print summary by category
-        print("\n[SUMMARY BY CATEGORY]")
-        category_counts = {}
-        for tender in unique_list:
-            cat = tender.get('matched_category', 'unknown')
-            category_counts[cat] = category_counts.get(cat, 0) + 1
-        
-        for category, count in sorted(category_counts.items()):
-            print(f"  {category.upper()}: {count} tenders")
-        
-        # Print which keyword matched
-        print("\n[MATCHED KEYWORDS BY CATEGORY]")
-        keyword_counts = {}
-        for tender in unique_list:
-            keyword = tender.get('matched_keyword', 'unknown')
-            keyword_counts[keyword] = keyword_counts.get(keyword, 0) + 1
-        
-        for keyword, count in sorted(keyword_counts.items(), key=lambda x: x[1], reverse=True):
-            print(f"  '{keyword}': {count} tenders")
-        
-        # Save to Supabase
-        saved = save_to_gem_table(unique_list)
-        print(f"\n[OK] Saved {saved} bids to database.")
-        
-        # Archive expired tenders
-        archive_client = _get_client()
-        archived = archive_expired_gem_tenders(archive_client)
+    print(f"\n{'='*70}")
+    print(f"[FINAL SUMMARY] Scraping Complete")
+    print(f"{'='*70}")
+    print(f"📊 BID STATISTICS:")
+    print(f"   Total bids seen on pages:     {total_bids_seen}")
+    print(f"   Bids skipped (already in DB): {total_bids_skipped}")
+    print(f"   New bids processed:           {total_new_refs}")
+    print(f"   PDFs downloaded:              {total_pdfs_downloaded}")
+    print(f"   Matches found:                {total_matches_found}")
+    print(f"{'='*70}")
+    print(f"💾 DATABASE INSERTS:")
+    print(f"   References inserted into processed_references: {total_refs_inserted}")
+    print(f"   Tenders inserted into gem_tenders:            {total_tenders_inserted}")
+    print(f"{'='*70}")
+    print(f"📈 REFERENCE COUNTER:")
+    print(f"   Initial references in DB:  {initial_ref_count}")
+    print(f"   New references added:      {total_new_refs}")
+    print(f"   Total references now:      {initial_ref_count + total_new_refs}")
+    print(f"{'='*70}")
+    
+    # Archive expired tenders
+    archive_client = _get_client()
+    archived = archive_expired_gem_tenders(archive_client)
+    if archived > 0:
         print(f"[OK] Archived {archived} expired tender(s) from database.")
-        
-        # Print sample
-        print("\n[Sample of matches:]")
-        for i, item in enumerate(unique_list[:5], 1):
-            title = safe_get_string(item.get('web_category', item.get('items')), 'Untitled')
-            title = clean_title(title)
-            ref = safe_get_string(item.get('bid_number'), 'No Ref')
-            keyword = safe_get_string(item.get('matched_keyword'), 'Unknown')
-            category = safe_get_string(item.get('matched_category'), 'Unknown')
-            print(f"  {i}. {title[:60]} - {ref}")
-            print(f"     Category: {category} | Matched: '{keyword}'")
-        
-        if len(unique_list) > 5:
-            print(f"  ... and {len(unique_list) - 5} more")
-    else:
-        print("[WARN] No matches found.")
     
-    return all_results
+    return total_matches_found
 
 # ─── Main Entry Point ──────────────────────────────────────────────────────
 
 if __name__ == '__main__':
     print("\n" + "=" * 60)
-    print("GeM Tender Scraper with Supabase")
+    print("GeM Tender Scraper - Extract Ref BEFORE PDF Download")
     print(f"Categories: {len(KEYWORD_CATEGORIES)}")
     total_keywords = sum(len(kw) for kw in KEYWORD_CATEGORIES.values())
     print(f"Total Keywords: {total_keywords}")
@@ -1050,7 +1121,7 @@ if __name__ == '__main__':
     
     try:
         results = asyncio.run(scrape_gem())
-        print(f"\n✅ Done! Found {len(results)} matching tenders.")
+        print(f"\n✅ Done! Found {results} matching tenders.")
     except KeyboardInterrupt:
         print("\n⚠️ Interrupted by user")
     except Exception as e:

@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from supabase import create_client, Client
 
-from .schema import TenderRecord
+from .schema import TenderRecord, build_dedup_signature
 
 log = structlog.get_logger()
 
@@ -129,9 +129,36 @@ def insert_tender(record: TenderRecord) -> Optional[str]:
         return None
 
 
+def _filter_existing_tenders(
+    run_tenders: list[dict],
+    existing_tenders: list[dict],
+) -> list[dict]:
+    """Exclude tenders whose reference or url hash already exists in the saved table."""
+    existing_signatures = {
+        build_dedup_signature(
+            tender.get("reference_number"),
+            tender.get("url_hash"),
+        )
+        for tender in existing_tenders
+        if tender.get("reference_number") or tender.get("url_hash")
+    }
+
+    filtered: list[dict] = []
+    for tender in run_tenders:
+        signature = build_dedup_signature(
+            tender.get("reference_number"),
+            tender.get("url_hash"),
+        )
+        if signature in existing_signatures:
+            continue
+        filtered.append(tender)
+
+    return filtered
+
+
 # ─── Fetch tenders for a run (for email digest) ──────────────
 def get_run_tenders(run_id: str) -> list[dict]:
-    """Returns all PASS tenders created in this run, for the email."""
+    """Return PASS tenders from this run that are not already persisted in the tenders table for today."""
     client = _get_client()
     res = (
         client.table("tenders")
@@ -142,4 +169,26 @@ def get_run_tenders(run_id: str) -> list[dict]:
         .order("scraped_at", desc=False)
         .execute()
     )
-    return res.data or []
+    run_tenders = res.data or []
+
+    existing_tenders: list[dict] = []
+    try:
+        existing_res = (
+            client.table("todays_tenders")
+            .select("reference_number,url_hash,run_id")
+            .neq("run_id", run_id)
+            .execute()
+        )
+        existing_tenders = existing_res.data or []
+    except Exception:
+        existing_res = (
+            client.table("tenders")
+            .select("reference_number,url_hash,run_id")
+            .eq("status", "PASS")
+            .is_("deleted_at", None)
+            .neq("run_id", run_id)
+            .execute()
+        )
+        existing_tenders = existing_res.data or []
+
+    return _filter_existing_tenders(run_tenders, existing_tenders)

@@ -11,7 +11,7 @@ import { format, parseISO } from 'date-fns'
 import { useTypeD } from '../hooks/useTypeD'
 import { useTypeC } from '../hooks/useTypeC'
 import { useTender18Tenders, type Tender18Tender } from '../hooks/useTender18'
-import { useGemTenders, type GemTender } from '../hooks/useGemTenders'
+import { useGemTenders, useGemTodayTenders, type GemTender } from '../hooks/useGemTenders'
 import Tender18Card from '../components/tenders/Tender18Card'
 import GemTenderCard from '../components/tenders/GemTenderCard'
 import PortalTabs from '../components/portals/PortalTabs'
@@ -35,20 +35,35 @@ export default function MorePortalsPage() {
   // Get current portal config
   const currentPortal: PortalConfig = getPortalById(activePortalId) || PORTALS[0]
   const isComingSoon: boolean = currentPortal?.comingSoon || false
+  const isGem = activePortalId === 'gem'
 
   // Portal-specific hooks
   const typeD = useTypeD()
   const typeC = useTypeC()
   const { data: tender18Tenders = [], refetch: refetchTender18, isLoading: isLoadingTender18 } = useTender18Tenders()
   const { data: gemTenders = [], refetch: refetchGem, isLoading: isLoadingGem } = useGemTenders()
+  const { data: gemTodayTenders = [], refetch: refetchGemToday, isLoading: isLoadingGemToday } = useGemTodayTenders()
+  const [gemView, setGemView] = useState<'all' | 'today'>('all')
 
   // Determine which hook to use based on active portal
   const isTender18 = activePortalId === 'tender18'
 
   const { isRunning, loading, error, status, trigger, stop } = isTender18 ? typeD : typeC
-  const tenders = isTender18 ? tender18Tenders : gemTenders
-  const refetch = isTender18 ? refetchTender18 : refetchGem
-  const isLoading = isTender18 ? isLoadingTender18 : isLoadingGem
+  const tenders = isTender18
+    ? tender18Tenders
+    : isGem && gemView === 'today'
+    ? gemTodayTenders
+    : gemTenders
+  const refetch = isTender18
+    ? refetchTender18
+    : isGem && gemView === 'today'
+    ? refetchGemToday
+    : refetchGem
+  const isLoading = isTender18
+    ? isLoadingTender18
+    : isGem && gemView === 'today'
+    ? isLoadingGemToday
+    : isLoadingGem
 
   // Toggle for showing/hiding filters
   const [showFilters, setShowFilters] = useState<boolean>(false)
@@ -203,6 +218,36 @@ export default function MorePortalsPage() {
 
       {/* Portal Tabs */}
       <PortalTabs activePortal={activePortalId} onPortalChange={handlePortalChange} />
+
+      {/* GeM Sub-tabs for Today and All */}
+      {isGem && (
+        <div className="flex flex-wrap gap-2 mt-4">
+          <button
+            type="button"
+            onClick={() => setGemView('all')}
+            className={clsx(
+              'px-4 py-2 rounded-full text-sm font-medium transition-all',
+              gemView === 'all'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            )}
+          >
+            All GeM
+          </button>
+          <button
+            type="button"
+            onClick={() => setGemView('today')}
+            className={clsx(
+              'px-4 py-2 rounded-full text-sm font-medium transition-all',
+              gemView === 'today'
+                ? 'bg-indigo-600 text-white'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            )}
+          >
+            Today\'s GeM
+          </button>
+        </div>
+      )}
 
       {/* Scraper Control Card */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">
@@ -505,7 +550,9 @@ export default function MorePortalsPage() {
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-slate-900" style={lufgaSemiboldStyle}>
-            {currentPortal.name} Results ({filteredTenders.length})
+            {isGem && gemView === 'today'
+              ? `GeM Today Results (${filteredTenders.length})`
+              : `${currentPortal.name} Results (${filteredTenders.length})`}
           </h2>
         </div>
         {isLoading ? (

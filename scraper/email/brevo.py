@@ -18,7 +18,27 @@ import structlog
 from datetime import datetime, timezone
 from typing import Optional
 
+from scraper.core.schema import build_dedup_signature
+
 log = structlog.get_logger()
+
+
+def _dedup_tenders_for_email(tenders: list[dict]) -> list[dict]:
+    """Remove duplicate tenders before rendering the email digest."""
+    seen: set[tuple[Optional[str], str]] = set()
+    unique_tenders: list[dict] = []
+
+    for tender in tenders:
+        signature = build_dedup_signature(
+            tender.get("reference_number"),
+            tender.get("url_hash"),
+        )
+        if signature in seen:
+            continue
+        seen.add(signature)
+        unique_tenders.append(tender)
+
+    return unique_tenders
 
 
 def _build_html(tenders: list[dict]) -> str:
@@ -297,6 +317,8 @@ def send_digest(
     Returns:
         True if email sent, False if skipped (no tenders) or failed
     """
+    tenders = _dedup_tenders_for_email(tenders)
+
     if not tenders:
         log.info("email.skipped", reason="no_new_tenders", run_id=run_id)
         return False

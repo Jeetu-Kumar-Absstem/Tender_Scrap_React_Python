@@ -1,11 +1,10 @@
 """
 type_c.py
 GeM Tender Scraper with Supabase Integration
-- COMPLETE FLOW: Extract ref number BEFORE PDF download
-- Store ALL reference numbers in processed_references
+- Extract ref number BEFORE PDF download
+- Store ALL references in processed_references
 - Store ONLY matching tenders in gem_tenders
-- Skip already processed bids (no PDF download, no keyword check)
-- Bulk insert with counters
+- Bulk insert with proper duplicate checking
 """
 
 import asyncio
@@ -23,6 +22,24 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 from playwright.async_api import async_playwright
+
+# ─── Email Digest ──────────────────────────────────────────────────────────
+try:
+    import importlib.util, os
+    _brevo_path = os.path.join(os.path.dirname(__file__), "..", "email", "brevo.py")
+    _brevo_path = os.path.abspath(_brevo_path)
+    print(f"[EMAIL] Loading brevo from: {_brevo_path}")
+    _spec = importlib.util.spec_from_file_location("brevo", _brevo_path)
+    _brevo_mod = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_brevo_mod)
+    send_digest = _brevo_mod.send_digest
+    _EMAIL_ENABLED = True
+    print(f"[EMAIL] ✅ Brevo module loaded successfully")
+except Exception as _e:
+    print(f"[WARN] Brevo email module not found — digest emails disabled. ({_e})")
+    _EMAIL_ENABLED = False
+    def send_digest(*args, **kwargs):
+        return False
 
 # ─── Force UTF-8 Encoding ──────────────────────────────────────────────
 
@@ -103,7 +120,7 @@ except ImportError:
 #         "Medical college oxygen plant",
 #     ],
 #     "nitrogen": [
-#         "nitrogen plant",
+#         "nitrogen gas plant",
 #         "nitrogen psa plant",
 #         "nitrogen gas generation",
 #         "nitrogen gas generator",
@@ -131,7 +148,7 @@ except ImportError:
 #         "breakdown maintenance oxygen plant",
 #         "breakdown maintenance nitrogen plant",
 #         "breakdown maintenance psa plant",
-#         "amc psa plany",
+#         "amc psa plant",
 #         "cmc psa plant",
 #         "customized amc/cmc for pre-owned products - psa plant",
 #         "customized amc/cmc for pre-owned products - oxygen psa plant",
@@ -168,12 +185,15 @@ except ImportError:
 #         "Carbon molecular sieve nitrogen plant"
 #     ],
 #     "camc": [
-#         "camc"
+#         "camc oxygen plant",
+#         "camc nitrogen plant",    
+
 #     ],
 # }
 
+
 KEYWORD_CATEGORIES = {
- "oxygen": [
+    "oxygen": [
         "oxygen plant",
         "oxygen psa plant",
         "oxygen gas generation",
@@ -182,12 +202,9 @@ KEYWORD_CATEGORIES = {
         "oxygen generation plant",
         "On-site oxygen generation system",
         "Oxygen concentrator plant",
-        "District hospital oxygen plant",
-        "Medical college oxygen plant",
-    ],
-}
+],
 
-# ─── Exclude Keywords ──────────────────────────────────────────────────────
+}
 
 EXCLUDE_KEYWORDS = [
     "oem authorization certificate",
@@ -231,6 +248,13 @@ def _normalize_date(raw: str | None) -> str | None:
 def generate_url_hash(url: str) -> str:
     return hashlib.md5(url.encode('utf-8')).hexdigest()
 
+def _build_organization(department: str | None, organization: str | None) -> str | None:
+    dept = _safe_text(department)
+    org = _safe_text(organization)
+    if dept and org:
+        return f"{dept} | {org}"
+    return dept or org
+
 def _safe_text(value: str | None) -> str | None:
     if not value:
         return None
@@ -240,13 +264,11 @@ def _safe_text(value: str | None) -> str | None:
 # ─── Title Cleaning Functions ──────────────────────────────────────────
 
 def has_hindi_characters(text: str) -> bool:
-    """Check if text contains Devanagari (Hindi) characters."""
     if not text:
         return False
     return bool(re.search(r'[\u0900-\u097F]', text))
 
 def extract_english_text(text: str) -> str:
-    """Extract only English text from mixed Hindi/English text."""
     if not text:
         return ""
     
@@ -265,7 +287,6 @@ def extract_english_text(text: str) -> str:
     return ""
 
 def clean_title(title: str) -> str:
-    """Clean title - remove Hindi, keep English, remove prefixes."""
     if not title:
         return ""
     
@@ -304,7 +325,6 @@ def clean_title(title: str) -> str:
 # ─── URL Fix Function ──────────────────────────────────────────────────
 
 def get_pdf_url(bid_url: str) -> str:
-    """Extract bid ID and build PRODUCTION URL."""
     if not bid_url:
         return ""
     
@@ -353,7 +373,6 @@ def get_pdf_url(bid_url: str) -> str:
 # ─── PDF Extraction ─────────────────────────────────────────────────────
 
 def extract_pdf_text(pdf_url: str) -> tuple[str, str]:
-    """Extract text from PDF using available library."""
     if PDF_LIB is None:
         return "", "No PDF library available"
     
@@ -495,10 +514,9 @@ def extract_pdf_pdfplumber(content):
     except Exception:
         return ""
 
-# ─── Exact Phrase Matching Functions ──────────────────────────────────
+# ─── Exact Phrase Matching ─────────────────────────────────────────────
 
 def exact_phrase_match(text: str, keyword: str) -> bool:
-    """Check if the exact keyword phrase exists in the text."""
     if not text or not keyword:
         return False
     
@@ -509,99 +527,289 @@ def exact_phrase_match(text: str, keyword: str) -> bool:
     return bool(re.search(pattern, text_lower))
 
 def simple_match(text: str, keyword: str) -> bool:
-    """Uses exact phrase matching."""
     return exact_phrase_match(text, keyword)
 
 # ─── Database Functions ──────────────────────────────────────────────────
 
 def load_processed_reference_numbers(client) -> set:
-    """
-    Load ALL processed reference numbers from processed_references table.
-    ONE QUERY at script startup.
-    """
     if client is None:
         print("[DB] No Supabase client - cannot load processed references")
         return set()
-    
+
     try:
         print("[DB] Loading processed reference numbers from database...")
-        result = client.table("processed_references").select("reference_number").execute()
-        
         processed = set()
-        for row in (result.data or []):
-            ref = row.get("reference_number")
-            if ref:
-                processed.add(ref)
-        
-        print(f"[DB] ✅ Loaded {len(processed)} processed reference numbers")
+        page_size = 1000
+        offset = 0
+
+        while True:
+            result = client.table("processed_references") \
+                .select("reference_number") \
+                .range(offset, offset + page_size - 1) \
+                .execute()
+
+            rows = result.data or []
+            for row in rows:
+                ref = row.get("reference_number")
+                if ref:
+                    processed.add(ref)
+
+            print(f"[DB]   ... fetched {offset + len(rows)} processed references so far")
+
+            if len(rows) < page_size:
+                break  # reached last page
+            offset += page_size
+
+        print(f"[DB] ✅ Loaded {len(processed)} processed reference numbers (all pages)")
         return processed
-        
+
     except Exception as e:
         print(f"[DB] ⚠️ Failed to load processed references: {e}")
         return set()
 
-def bulk_insert_processed_references(ref_numbers: list, client, batch_size: int = 100) -> int:
+def load_gem_tender_references(client) -> set:
+    """Load all reference_numbers already in gem_tenders into memory at startup."""
+    if client is None:
+        print("[DB] No Supabase client - cannot load gem_tender references")
+        return set()
+
+    try:
+        print("[DB] Loading gem_tenders reference numbers from database...")
+        gem_refs = set()
+        page_size = 1000
+        offset = 0
+
+        while True:
+            result = client.table("gem_tenders") \
+                .select("reference_number") \
+                .range(offset, offset + page_size - 1) \
+                .execute()
+
+            rows = result.data or []
+            for row in rows:
+                ref = row.get("reference_number")
+                if ref:
+                    gem_refs.add(ref)
+
+            print(f"[DB]   ... fetched {offset + len(rows)} gem_tenders references so far")
+
+            if len(rows) < page_size:
+                break  # reached last page
+            offset += page_size
+
+        print(f"[DB] ✅ Loaded {len(gem_refs)} gem_tenders reference numbers (all pages)")
+        return gem_refs
+
+    except Exception as e:
+        print(f"[DB] ⚠️ Failed to load gem_tenders references: {e}")
+        return set()
+
+
+def bulk_insert_processed_references(ref_numbers: list, client, existing_refs: set, batch_size: int = 100) -> int:
     """
-    Bulk insert reference numbers into processed_references table.
+    Insert ONLY NEW references into processed_references table.
+    Returns: number of references actually inserted
     """
     if not ref_numbers or not client:
         return 0
     
+    # Filter: Only keep references NOT already in DB
+    new_refs = [ref for ref in ref_numbers if ref not in existing_refs]
+    
+    if not new_refs:
+        print(f"[DB] ℹ️ All {len(ref_numbers)} references already exist - nothing to insert")
+        return 0
+    
+    print(f"[DB] 📊 {len(new_refs)} NEW references out of {len(ref_numbers)} total")
+    
     # Prepare data for insertion
-    rows = [{"reference_number": ref} for ref in ref_numbers]
+    rows = [{"reference_number": ref} for ref in new_refs]
     total_inserted = 0
     
     for i in range(0, len(rows), batch_size):
         batch = rows[i:i + batch_size]
         try:
-            result = client.table("processed_references").insert(batch).execute()
+            result = client.table("processed_references").upsert(batch, on_conflict="reference_number").execute()
             inserted = len(result.data or [])
             total_inserted += inserted
-            print(f"[DB] ✅ Inserted {inserted} reference numbers into processed_references")
+            
+            # Update the in-memory set with inserted references
+            for row in result.data or []:
+                if row.get("reference_number"):
+                    existing_refs.add(row.get("reference_number"))
+            
+            print(f"[DB] ✅ Inserted {inserted} NEW reference numbers")
         except Exception as e:
-            print(f"[DB] ⚠️ Bulk insert into processed_references failed: {e}")
+            print(f"[DB] ⚠️ Bulk insert failed: {e}")
             # Fallback: Try individual inserts
             for row in batch:
                 try:
-                    client.table("processed_references").insert(row).execute()
-                    total_inserted += 1
+                    result = client.table("processed_references").upsert(row, on_conflict="reference_number").execute()
+                    if result.data and len(result.data) > 0:
+                        total_inserted += 1
+                        if row.get("reference_number"):
+                            existing_refs.add(row.get("reference_number"))
                 except Exception as inner_e:
-                    print(f"[DB] ⚠️ Failed to insert reference {row['reference_number']}: {inner_e}")
+                    print(f"[DB] ⚠️ Failed to insert {row['reference_number']}: {inner_e}")
     
     return total_inserted
 
-def bulk_insert_tenders(tender_list: list, client, batch_size: int = 50) -> int:
+def bulk_insert_tenders(tender_list: list, client, gem_refs: set, batch_size: int = 50) -> int:
     """
-    Insert tenders into gem_tenders table in bulk batches.
+    Insert ONLY NEW tenders into gem_tenders table.
+    Deduplication uses the in-memory gem_refs set (loaded once at startup).
+    gem_refs is updated in-place after each successful insert — no per-batch DB queries.
+    Returns: number of tenders actually inserted
     """
     if not tender_list or not client:
         return 0
+
+    # Filter using in-memory set — O(1) per lookup, zero extra DB calls
+    new_tenders = [t for t in tender_list if t.get('reference_number') not in gem_refs]
+
+    if not new_tenders:
+        print(f"[DB] ℹ️ All {len(tender_list)} tenders already in gem_tenders (in-memory check) - nothing to insert")
+        return 0
+
+    print(f"[DB] 📊 {len(new_tenders)} NEW tenders out of {len(tender_list)} total (skipping {len(tender_list) - len(new_tenders)} already in gem_tenders)")
     
     total_inserted = 0
-    
-    for i in range(0, len(tender_list), batch_size):
-        batch = tender_list[i:i + batch_size]
+
+    for i in range(0, len(new_tenders), batch_size):
+        batch = new_tenders[i:i + batch_size]
         try:
             result = client.table("gem_tenders").insert(batch).execute()
             inserted = len(result.data or [])
             total_inserted += inserted
-            print(f"[DB] ✅ Bulk inserted {inserted} tenders (batch {i//batch_size + 1})")
+            # Update in-memory set so subsequent batches stay consistent
+            for row in (result.data or []):
+                if row.get("reference_number"):
+                    gem_refs.add(row["reference_number"])
+            print(f"[DB] ✅ Bulk inserted {inserted} NEW tenders into gem_tenders")
         except Exception as e:
-            print(f"[DB] ⚠️ Bulk insert into gem_tenders failed: {e}")
-            # Fallback: Try individual inserts
+            print(f"[DB] ⚠️ Bulk insert failed: {e}")
             for tender in batch:
                 try:
-                    client.table("gem_tenders").insert(tender).execute()
+                    result = client.table("gem_tenders").insert(tender).execute()
                     total_inserted += 1
+                    # Update in-memory set on individual insert too
+                    ref = tender.get('reference_number')
+                    if ref:
+                        gem_refs.add(ref)
                 except Exception as inner_e:
-                    print(f"[DB] ⚠️ Failed to insert tender {tender.get('reference_number', 'unknown')}: {inner_e}")
-    
+                    print(f"[DB] ⚠️ Failed to insert {tender.get('reference_number')}: {inner_e}")
+
     return total_inserted
 
+
+def bulk_insert_today_tenders(tender_list: list, client, existing_refs: set, batch_size: int = 50) -> int:
+    """
+    Insert NEW tenders into today_gem_tenders for the current scrape day.
+    - existing_refs: the same processed_refs set used for gem_tenders deduplication.
+    - Only inserts tenders whose reference_number is NOT already in today_gem_tenders
+      (checked via a fresh DB query for today's records).
+    - Uses upsert (on_conflict='reference_number') so duplicate runs are safe.
+    """
+    if not tender_list or not client:
+        return 0
+
+    allowed_keys = {
+        "title",
+        "reference_number",
+        "organization",
+        "location",
+        "deadline",
+        "estimated_value",
+        "source_url",
+        "url_hash",
+        "keywords_matched",
+        "user_status",
+        "scraped_at",
+    }
+
+    # Fetch reference numbers already in today_gem_tenders to avoid duplicates
+    try:
+        today_start = datetime.now(timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ).isoformat()
+        existing_today_res = client.table("today_gem_tenders") \
+            .select("reference_number") \
+            .gte("scraped_at", today_start) \
+            .execute()
+        today_refs = {
+            row["reference_number"]
+            for row in (existing_today_res.data or [])
+            if row.get("reference_number")
+        }
+    except Exception as e:
+        print(f"[DB] ⚠️ Could not load today_gem_tenders refs: {e}")
+        today_refs = set()
+
+    # Only insert tenders not already in today_gem_tenders
+    new_tenders = [
+        t for t in tender_list
+        if t.get("reference_number") not in today_refs
+    ]
+
+    if not new_tenders:
+        print(f"[DB] ℹ️ All {len(tender_list)} tenders already in today_gem_tenders — skipping")
+        return 0
+
+    print(f"[DB] 📊 Inserting {len(new_tenders)} NEW tenders into today_gem_tenders (skipping {len(tender_list) - len(new_tenders)} duplicates)")
+
+    total_inserted = 0
+    for i in range(0, len(new_tenders), batch_size):
+        batch = new_tenders[i:i + batch_size]
+        safe_batch = [
+            {k: v for k, v in tender.items() if k in allowed_keys}
+            for tender in batch
+        ]
+        try:
+            result = client.table("today_gem_tenders").upsert(
+                safe_batch, on_conflict="reference_number"
+            ).execute()
+            inserted = len(result.data or [])
+            total_inserted += inserted
+            print(f"[DB] ✅ Upserted {inserted} tenders into today_gem_tenders")
+        except Exception as e:
+            print(f"[DB] ⚠️ Bulk upsert into today_gem_tenders failed: {e}")
+            for tender in safe_batch:
+                try:
+                    client.table("today_gem_tenders").upsert(
+                        tender, on_conflict="reference_number"
+                    ).execute()
+                    total_inserted += 1
+                except Exception as inner_e:
+                    lower = str(inner_e).lower()
+                    if "duplicate" in lower or "unique" in lower or "already exists" in lower:
+                        continue
+                    print(f"[DB] ⚠️ Failed to upsert today tender {tender.get('reference_number')}: {inner_e}")
+
+    return total_inserted
+
+
+def clear_old_today_gem_tenders(client):
+    if client is None:
+        print("[TODAY CLEANUP] No Supabase client — skipping today_gem_tenders cleanup.")
+        return 0
+
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    print(f"[TODAY CLEANUP] Removing today_gem_tenders scraped before {today_start}...")
+
+    try:
+        result = client.table("today_gem_tenders") \
+            .delete() \
+            .lt("scraped_at", today_start) \
+            .execute()
+        deleted = len(result.data or [])
+        print(f"[TODAY CLEANUP] Removed {deleted} old today_gem_tenders row(s)")
+        return deleted
+    except Exception as e:
+        print(f"[TODAY CLEANUP] Failed to remove old rows: {e}")
+        return 0
+
+
 def prepare_tender_data(raw_data: dict) -> dict:
-    """
-    Prepare tender data for insertion matching the gem_tenders table schema.
-    """
     title = raw_data.get('web_category') or raw_data.get('items', '')
     title = clean_title(title)
     
@@ -637,7 +845,6 @@ def prepare_tender_data(raw_data: dict) -> dict:
     }
 
 def archive_expired_gem_tenders(client):
-    """Archive expired tenders from gem_tenders table."""
     if client is None:
         print("[ARCHIVE] No Supabase client — skipping archive sweep.")
         return 0
@@ -708,13 +915,14 @@ def archive_expired_gem_tenders(client):
                 print(f"   [WARN] Archive insert returned no data for: {tender_id}")
                 continue
 
+            # Hard-delete from gem_tenders so the UI only shows active tenders
             client.table("gem_tenders") \
-                .update({"deleted_at": datetime.now(timezone.utc).isoformat()}) \
+                .delete() \
                 .eq("id", tender_id) \
                 .execute()
 
             archived_count += 1
-            print(f"   [OK] Archived: {tender.get('title', tender_id)[:60]}")
+            print(f"   [OK] Archived & removed from gem_tenders: {tender.get('title', tender_id)[:60]}")
 
         except Exception as e:
             print(f"   [ERROR] Failed to archive tender {tender_id}: {e}")
@@ -768,24 +976,8 @@ async def _go_to_next_page(page) -> bool:
 # ─── Main Scraper ──────────────────────────────────────────────────────
 
 async def scrape_gem():
-    """
-    COMPLETE FLOW - Extract ref number BEFORE PDF download:
-    
-    1. Load ALL processed references from DB (ONE query)
-    2. For each bid:
-       a. Extract bid number from HTML (BEFORE PDF download)
-       b. Check if in processed_refs (memory lookup - NO DB query)
-       c. If exists → SKIP (NO PDF download, NO keyword check)
-       d. If new:
-          - Download PDF, check keywords
-          - ALWAYS add to ref_batch (for processed_references)
-          - ONLY if match: add to tender_batch (for gem_tenders)
-    3. Bulk insert both tables
-    4. Show counter: How many new references added
-    """
-    
     logger.info("=" * 60)
-    logger.info("GeM Tender Scraper - Extract Ref BEFORE PDF Download")
+    logger.info("GeM Tender Scraper - Reference Tracking & Bulk Insert")
     logger.info(f"Categories: {len(KEYWORD_CATEGORIES)}")
     total_keywords = sum(len(kw) for kw in KEYWORD_CATEGORIES.values())
     logger.info(f"Total Keywords: {total_keywords}")
@@ -795,39 +987,58 @@ async def scrape_gem():
     # ─── Initialize Supabase ──────────────────────────────────────────
     client = _get_client()
     
-    # ONE QUERY: Load ALL processed references
+    if client is None:
+        print("[ERROR] ❌ No Supabase client available!")
+        return []
+
+    # Ensure only today's tenders remain in the today_gem_tenders table
+    clear_old_today_gem_tenders(client)
+    
+    # ONE QUERY: Load ALL processed references (tracks all scraped PDFs)
     processed_refs = load_processed_reference_numbers(client)
     initial_ref_count = len(processed_refs)
     print(f"[INIT] {initial_ref_count} processed reference numbers loaded into memory")
+
+    # ONE QUERY: Load ALL gem_tenders reference numbers (used for tender insert dedup)
+    gem_refs = load_gem_tender_references(client)
+    print(f"[INIT] {len(gem_refs)} gem_tenders reference numbers loaded into memory")
     
-    # Track session processing
+    # Track bids processed in this session
     processed_in_session = set()
+    all_results = []
     
     # Batch buffers
-    ref_batch = []        # ALL references (matched + unmatched)
-    tender_batch = []     # ONLY matched tenders
+    ref_batch = []        # ALL new references (to be inserted)
+    tender_batch = []     # ONLY matched tenders (to be inserted)
     REF_BATCH_SIZE = 100
     TENDER_BATCH_SIZE = 50
     
-    # Statistics
+    # Statistics - ACCURATE counting
     total_bids_seen = 0
     total_bids_skipped = 0
-    total_new_refs = 0
-    total_matches_found = 0
+    total_new_refs_found = 0
     total_refs_inserted = 0
+    total_matches_found = 0
     total_tenders_inserted = 0
     total_pdfs_downloaded = 0
+    total_today_inserted = 0
     
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(
             headless=True,
-            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"]
+            args=[
+                "--no-sandbox",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ]
         )
         context = await browser.new_context(
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36',
             viewport={'width': 1920, 'height': 1080},
             locale='en-IN',
             timezone_id='Asia/Kolkata',
+            ignore_https_errors=True,
         )
         page = await context.new_page()
         
@@ -842,9 +1053,10 @@ async def scrape_gem():
                 logger.info(f"\n{'='*60}")
                 logger.info(f"🎯 PROCESSING CATEGORY: '{category.upper()}'")
                 logger.info(f"   Search Term: '{search_term}'")
+                logger.info(f"   Keywords: {len(keywords)} keywords")
                 logger.info(f"{'='*60}")
                 
-                # Search
+                # ─── Search ──────────────────────────────────────────────
                 search_input = await page.query_selector('#searchBid')
                 if not search_input:
                     logger.error("  ❌ Search input not found")
@@ -875,7 +1087,7 @@ async def scrape_gem():
                     
                     for idx, card in enumerate(cards, 1):
                         try:
-                            # ─── STEP 1: Extract bid number from HTML ──────────
+                            # ─── STEP 1: Extract bid number (BEFORE PDF) ───
                             bid_elem = await card.query_selector('a.bid_no_hover')
                             if not bid_elem:
                                 continue
@@ -886,10 +1098,9 @@ async def scrape_gem():
                             total_bids_seen += 1
                             category_seen += 1
                             
-                            # ─── STEP 2: Check if already processed ────────────
-                            # Using in-memory set - NO DATABASE QUERY!
+                            # ─── STEP 2: Check if already processed ────────
                             if bid_number and bid_number in processed_refs:
-                                logger.info(f"    [{idx}] {bid_number} - ✅ Already processed, skipping (NO PDF download)")
+                                logger.info(f"    [{idx}] {bid_number} - ✅ Already processed, skipping (NO PDF)")
                                 category_skipped += 1
                                 total_bids_skipped += 1
                                 continue
@@ -900,12 +1111,11 @@ async def scrape_gem():
                                 total_bids_skipped += 1
                                 continue
                             
-                            # ─── STEP 3: NEW BID - Process it ──────────────────
+                            # ─── STEP 3: NEW BID - Process it ──────────────
                             logger.info(f"    [{idx}] {bid_number} - 🔄 NEW bid, processing...")
                             category_new += 1
-                            total_new_refs += 1
+                            total_new_refs_found += 1
                             
-                            # Get PDF URL
                             pdf_url = get_pdf_url(bid_url)
                             
                             # Get web category
@@ -934,22 +1144,18 @@ async def scrape_gem():
                             logger.info(f"      📝 Web Category: {web_category[:60]}...")
                             
                             if not pdf_url:
-                                logger.info(f"      ⚠️ No valid PDF URL - storing reference anyway")
-                                # Still add reference so we don't retry
+                                logger.info(f"      ⚠️ No valid PDF URL - will store reference")
                                 ref_batch.append(bid_number)
-                                processed_refs.add(bid_number)
                                 processed_in_session.add(bid_url)
                                 continue
                             
-                            # ─── STEP 4: Download PDF ──────────────────────────
+                            # ─── STEP 4: Download PDF ──────────────────────
                             logger.info(f"      ⬇️  Downloading PDF...")
                             pdf_text, method = extract_pdf_text(pdf_url)
                             
                             if not pdf_text:
-                                logger.info(f"      ❌ PDF extraction failed: {method} - storing reference anyway")
-                                # Still add reference so we don't retry
+                                logger.info(f"      ❌ PDF extraction failed: {method} - will store reference")
                                 ref_batch.append(bid_number)
-                                processed_refs.add(bid_number)
                                 processed_in_session.add(bid_url)
                                 continue
                             
@@ -957,14 +1163,14 @@ async def scrape_gem():
                             total_pdfs_downloaded += 1
                             logger.info(f"      ✅ PDF extracted ({len(pdf_text)} chars)")
                             
-                            # ─── STEP 5: Check keywords ─────────────────────────
+                            # ─── STEP 5: Check keywords ─────────────────────
                             matched_keyword = None
                             for priority_keyword in keywords:
                                 if simple_match(pdf_text, priority_keyword):
                                     matched_keyword = priority_keyword
                                     break
                             
-                            # ─── STEP 6: Exclude keyword filter ────────────────
+                            # ─── STEP 6: Exclude keyword filter ────────────
                             if matched_keyword:
                                 excluded_by = next(
                                     (kw for kw in EXCLUDE_KEYWORDS if simple_match(pdf_text, kw)),
@@ -974,12 +1180,11 @@ async def scrape_gem():
                                     logger.info(f"      🚫 EXCLUDED! '{matched_keyword}' but found '{excluded_by}'")
                                     matched_keyword = None
                             
-                            # ─── STEP 7: ALWAYS add reference ───────────────────
+                            # ─── STEP 7: ALWAYS add reference ──────────────
                             ref_batch.append(bid_number)
-                            processed_refs.add(bid_number)
                             processed_in_session.add(bid_url)
                             
-                            # ─── STEP 8: ONLY if match, add tender ─────────────
+                            # ─── STEP 8: ONLY if match, add tender ─────────
                             if matched_keyword:
                                 logger.info(f"      ✅ MATCH FOUND! (keyword: '{matched_keyword}')")
                                 
@@ -999,31 +1204,33 @@ async def scrape_gem():
                                 
                                 tender_data = prepare_tender_data(raw_data)
                                 tender_batch.append(tender_data)
+                                all_results.append(raw_data)
                                 category_matches += 1
                                 total_matches_found += 1
                                 
                                 # Flush tender batch if full
                                 if len(tender_batch) >= TENDER_BATCH_SIZE:
                                     print(f"\n[DB] 🔄 Flushing {len(tender_batch)} tenders...")
-                                    saved = bulk_insert_tenders(tender_batch, client)
-                                    total_tenders_inserted += saved
+                                    inserted = bulk_insert_tenders(tender_batch, client, gem_refs)
+                                    total_tenders_inserted += inserted
+                                    today_inserted = bulk_insert_today_tenders(tender_batch, client, processed_refs)
+                                    total_today_inserted += today_inserted
                                     tender_batch = []
                             else:
-                                logger.info(f"      ❌ No match found - reference stored")
+                                logger.info(f"      ❌ No match found - reference will be stored")
                             
-                            # ─── STEP 9: Flush reference batch if full ──────────
+                            # ─── STEP 9: Flush reference batch if full ────
                             if len(ref_batch) >= REF_BATCH_SIZE:
                                 print(f"\n[DB] 🔄 Flushing {len(ref_batch)} references...")
-                                saved = bulk_insert_processed_references(ref_batch, client)
-                                total_refs_inserted += saved
+                                inserted = bulk_insert_processed_references(ref_batch, client, processed_refs)
+                                total_refs_inserted += inserted
                                 ref_batch = []
                             
                         except Exception as e:
                             logger.error(f"      Error processing bid: {e}")
-                            # Still try to store reference if we have bid_number
-                            if bid_number:
+                            # Still try to store reference
+                            if 'bid_number' in locals() and bid_number:
                                 ref_batch.append(bid_number)
-                                processed_refs.add(bid_number)
                     
                     # ─── Next page ────────────────────────────────────────────
                     if not await _has_next_page(page):
@@ -1042,20 +1249,23 @@ async def scrape_gem():
                 logger.info(f"     PDFs downloaded: {category_pdfs}")
                 logger.info(f"     Matches found: {category_matches}")
                 
-                # ─── Flush category remaining ──────────────────────────────────
+                # ─── Flush category remaining ──────────────────────────────
                 if ref_batch:
                     print(f"\n[DB] 🔄 Flushing {len(ref_batch)} remaining references...")
-                    saved = bulk_insert_processed_references(ref_batch, client)
-                    total_refs_inserted += saved
+                    inserted = bulk_insert_processed_references(ref_batch, client, processed_refs)
+                    total_refs_inserted += inserted
                     ref_batch = []
                 
                 if tender_batch:
                     print(f"\n[DB] 🔄 Flushing {len(tender_batch)} remaining tenders...")
-                    saved = bulk_insert_tenders(tender_batch, client)
-                    total_tenders_inserted += saved
+                    inserted = bulk_insert_tenders(tender_batch, client, gem_refs)
+                    total_tenders_inserted += inserted
+                    today_inserted = bulk_insert_today_tenders(tender_batch, client, processed_refs)
+                    total_today_inserted += today_inserted
                     tender_batch = []
                 
                 if list(KEYWORD_CATEGORIES.keys())[-1] != category:
+                    logger.info(f"\n⏳ Waiting 3 seconds before next category...")
                     await asyncio.sleep(3)
                 
         except Exception as e:
@@ -1065,14 +1275,16 @@ async def scrape_gem():
             # ─── Final flush ──────────────────────────────────────────────────
             if ref_batch:
                 print(f"\n[DB] 🔄 Final flush of {len(ref_batch)} references...")
-                saved = bulk_insert_processed_references(ref_batch, client)
-                total_refs_inserted += saved
+                inserted = bulk_insert_processed_references(ref_batch, client, processed_refs)
+                total_refs_inserted += inserted
                 ref_batch = []
             
             if tender_batch:
                 print(f"\n[DB] 🔄 Final flush of {len(tender_batch)} tenders...")
-                saved = bulk_insert_tenders(tender_batch, client)
-                total_tenders_inserted += saved
+                inserted = bulk_insert_tenders(tender_batch, client, gem_refs)
+                total_tenders_inserted += inserted
+                today_inserted = bulk_insert_today_tenders(tender_batch, client, processed_refs)
+                total_today_inserted += today_inserted
                 tender_batch = []
             
             await context.close()
@@ -1086,18 +1298,19 @@ async def scrape_gem():
     print(f"📊 BID STATISTICS:")
     print(f"   Total bids seen on pages:     {total_bids_seen}")
     print(f"   Bids skipped (already in DB): {total_bids_skipped}")
-    print(f"   New bids processed:           {total_new_refs}")
+    print(f"   New bids found (not in DB):   {total_new_refs_found}")
     print(f"   PDFs downloaded:              {total_pdfs_downloaded}")
     print(f"   Matches found:                {total_matches_found}")
     print(f"{'='*70}")
     print(f"💾 DATABASE INSERTS:")
     print(f"   References inserted into processed_references: {total_refs_inserted}")
     print(f"   Tenders inserted into gem_tenders:            {total_tenders_inserted}")
+    print(f"   Tenders inserted into today_gem_tenders:      {total_today_inserted}")
     print(f"{'='*70}")
     print(f"📈 REFERENCE COUNTER:")
     print(f"   Initial references in DB:  {initial_ref_count}")
-    print(f"   New references added:      {total_new_refs}")
-    print(f"   Total references now:      {initial_ref_count + total_new_refs}")
+    print(f"   New references inserted:   {total_refs_inserted}")
+    print(f"   Total references now:      {initial_ref_count + total_refs_inserted}")
     print(f"{'='*70}")
     
     # Archive expired tenders
@@ -1106,13 +1319,61 @@ async def scrape_gem():
     if archived > 0:
         print(f"[OK] Archived {archived} expired tender(s) from database.")
     
-    return total_matches_found
+    # Print sample of matches
+    if all_results:
+        print("\n[Sample of matches:]")
+        for i, item in enumerate(all_results[:5], 1):
+            title = safe_get_string(item.get('web_category', item.get('items')), 'Untitled')
+            title = clean_title(title)
+            ref = safe_get_string(item.get('bid_number'), 'No Ref')
+            keyword = safe_get_string(item.get('matched_keyword'), 'Unknown')
+            category = safe_get_string(item.get('matched_category'), 'Unknown')
+            print(f"  {i}. {title[:60]} - {ref}")
+            print(f"     Category: {category} | Matched: '{keyword}'")
+        
+        if len(all_results) > 5:
+            print(f"  ... and {len(all_results) - 5} more")
+
+    # ─── Email Digest ──────────────────────────────────────────────────────
+    if _EMAIL_ENABLED:
+        if all_results:
+            print(f"\n[EMAIL] 📧 Sending digest for {len(all_results)} new GeM tender(s)...")
+
+            email_tenders = []
+            for raw in all_results:
+                title = clean_title(raw.get("web_category") or raw.get("items") or "")
+                bid_url = raw.get("bid_url", "")
+                email_tenders.append({
+                    "title":            title or raw.get("bid_number", "Untitled"),
+                    "reference_number": raw.get("bid_number"),
+                    "organization":     raw.get("organization") or raw.get("department"),
+                    "location":         None,
+                    "deadline":         _normalize_date(raw.get("end_date")),
+                    "estimated_value":  None,
+                    "source_url":       bid_url,
+                    "source_site":      "GeM",
+                    "url_hash":         generate_url_hash(bid_url) if bid_url else None,
+                    "keywords_matched": [raw["matched_keyword"]] if raw.get("matched_keyword") else [],
+                    "document_urls":    [raw["pdf_url"]] if raw.get("pdf_url") else [],
+                })
+
+            sent = send_digest(email_tenders)
+            if sent:
+                print("[EMAIL] ✅ Digest sent successfully.")
+            else:
+                print("[EMAIL] ⚠️  Digest NOT sent — check Brevo logs.")
+        else:
+            print("\n[EMAIL] ℹ️  No new tenders found — digest skipped.")
+    else:
+        print("\n[EMAIL] ⚠️  Email disabled (brevo module not loaded).")
+
+    return all_results
 
 # ─── Main Entry Point ──────────────────────────────────────────────────────
 
 if __name__ == '__main__':
     print("\n" + "=" * 60)
-    print("GeM Tender Scraper - Extract Ref BEFORE PDF Download")
+    print("GeM Tender Scraper - Reference Tracking & Bulk Insert")
     print(f"Categories: {len(KEYWORD_CATEGORIES)}")
     total_keywords = sum(len(kw) for kw in KEYWORD_CATEGORIES.values())
     print(f"Total Keywords: {total_keywords}")
@@ -1121,7 +1382,7 @@ if __name__ == '__main__':
     
     try:
         results = asyncio.run(scrape_gem())
-        print(f"\n✅ Done! Found {results} matching tenders.")
+        print(f"\n✅ Done! Found {len(results)} matching tenders.")
     except KeyboardInterrupt:
         print("\n⚠️ Interrupted by user")
     except Exception as e:

@@ -18,9 +18,15 @@ import structlog
 from datetime import datetime, timezone
 from typing import Optional
 
-from scraper.core.schema import build_dedup_signature
-
 log = structlog.get_logger()
+
+
+def build_dedup_signature(
+    reference_number: Optional[str],
+    url_hash: Optional[str],
+) -> tuple:
+    """Inlined from scraper.core.schema — avoids package import when run standalone."""
+    return (reference_number, url_hash)
 
 
 def _dedup_tenders_for_email(tenders: list[dict]) -> list[dict]:

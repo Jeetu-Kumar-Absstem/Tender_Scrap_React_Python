@@ -5,11 +5,10 @@ All Supabase interactions for the scraper.
 Uses service role key (full access — never exposed to frontend).
 
 Operations:
-  - create_run()        start a scrape run record
-  - tender_exists()     dedup check (ref_no + url_hash)
-  - insert_tender()     write new tender row
-  - finish_run()        update run with final stats
-  - get_run_tenders()   fetch all tenders for a run (for email)
+  - create_run()                  start a scrape run record
+  - fetch_all_seen_signatures()   one-time dedup snapshot (ref_no + url_hash set)
+  - insert_tender()               write new tender row
+  - finish_run()                  update run with final stats
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from supabase import create_client, Client
 
-from .schema import TenderRecord, build_dedup_signature
+from .schema import TenderRecord
 
 log = structlog.get_logger()
 
@@ -80,22 +79,29 @@ def finish_run(
     )
 
 
-# ─── Dedup check ─────────────────────────────────────────────
-def tender_exists(
-    reference_number: Optional[str],
-    url_hash: str,
-) -> bool:
+# ─── One-time dedup snapshot ──────────────────────────────────
+def fetch_all_seen_signatures() -> set[tuple[str, str]]:
     """
-    Returns True if this tender is already in the database.
-    Checks reference_number first (strongest), then url_hash.
-    Uses the DB-side function for a single round trip.
+    Fetch every (reference_number, url_hash) pair from the tenders table
+    in a single query at pipeline start.
+
+    The pipeline stores this as an in-memory set and checks new tenders
+    against it with O(1) lookups — no per-tender DB round-trips needed.
+    Empty strings are used as fallback so each tuple is always hashable.
     """
     client = _get_client()
-    res = client.rpc("tender_exists", {
-        "p_reference_number": reference_number,
-        "p_url_hash":         url_hash,
-    }).execute()
-    return bool(res.data)
+    res = (
+        client.table("tenders")
+        .select("reference_number, url_hash")
+        .is_("deleted_at", None)
+        .execute()
+    )
+    signatures = {
+        (row.get("reference_number") or "", row.get("url_hash") or "")
+        for row in (res.data or [])
+    }
+    log.info("signatures.loaded", count=len(signatures))
+    return signatures
 
 
 # ─── Insert tender ───────────────────────────────────────────
@@ -127,68 +133,3 @@ def insert_tender(record: TenderRecord) -> Optional[str]:
         else:
             log.error("tender.insert_failed", error=err, url=record.source_url)
         return None
-
-
-def _filter_existing_tenders(
-    run_tenders: list[dict],
-    existing_tenders: list[dict],
-) -> list[dict]:
-    """Exclude tenders whose reference or url hash already exists in the saved table."""
-    existing_signatures = {
-        build_dedup_signature(
-            tender.get("reference_number"),
-            tender.get("url_hash"),
-        )
-        for tender in existing_tenders
-        if tender.get("reference_number") or tender.get("url_hash")
-    }
-
-    filtered: list[dict] = []
-    for tender in run_tenders:
-        signature = build_dedup_signature(
-            tender.get("reference_number"),
-            tender.get("url_hash"),
-        )
-        if signature in existing_signatures:
-            continue
-        filtered.append(tender)
-
-    return filtered
-
-
-# ─── Fetch tenders for a run (for email digest) ──────────────
-def get_run_tenders(run_id: str) -> list[dict]:
-    """Return PASS tenders from this run that are not already persisted in the tenders table for today."""
-    client = _get_client()
-    res = (
-        client.table("tenders")
-        .select("*")
-        .eq("run_id", run_id)
-        .eq("status", "PASS")
-        .is_("deleted_at", None)
-        .order("scraped_at", desc=False)
-        .execute()
-    )
-    run_tenders = res.data or []
-
-    existing_tenders: list[dict] = []
-    try:
-        existing_res = (
-            client.table("todays_tenders")
-            .select("reference_number,url_hash,run_id")
-            .neq("run_id", run_id)
-            .execute()
-        )
-        existing_tenders = existing_res.data or []
-    except Exception:
-        existing_res = (
-            client.table("tenders")
-            .select("reference_number,url_hash,run_id")
-            .eq("status", "PASS")
-            .is_("deleted_at", None)
-            .neq("run_id", run_id)
-            .execute()
-        )
-        existing_tenders = existing_res.data or []
-
-    return _filter_existing_tenders(run_tenders, existing_tenders)

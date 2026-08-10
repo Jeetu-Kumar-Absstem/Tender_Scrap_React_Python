@@ -76,6 +76,7 @@ export function usePipeline() {
 
   const stop = useCallback(async () => {
     setError(null)
+    setStatus(prev => prev ? { ...prev, running: false } : null)
     try {
       await stopPipeline()
       await fetchStatus()

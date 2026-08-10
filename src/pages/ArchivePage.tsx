@@ -8,20 +8,14 @@ import {
 } from 'lucide-react'
 import { format, parseISO, isAfter, startOfDay, isToday } from 'date-fns'
 import { clsx } from 'clsx'
-import { useArchiveTender18Tenders } from '../hooks/useArchiveTender18'
+import { motion } from 'framer-motion'
 import { useArchiveGemTenders, useDeleteArchiveGemTender } from '../hooks/useArchiveGemTenders'
-import type { ArchivedTender } from '../hooks/useArchiveTender18'
 import type { ArchivedGemTender } from '../hooks/useArchiveGemTenders'
 import { PORTALS } from '../config/portals'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { supabase } from '../lib/supabase'
 import { extractState, getUniqueStates } from '../config/filterData'
 
 const lufgaRegularStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 400 } as const
 const lufgaSemiboldStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 600 } as const
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const db = supabase as any
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -56,34 +50,12 @@ function isDatePast(dateStr: string | null): boolean {
   }
 }
 
-// ─── delete hooks ─────────────────────────────────────────────────────────────
-
-function useDeleteArchiveTender18() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await db
-        .from('archive_tender18_tenders')
-        .delete()
-        .eq('id', id)
-      if (error) throw new Error(error.message)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['archive-tender18-tenders'] })
-    },
-  })
-}
-
 // ─── row component ───────────────────────────────────────────────────────────
 
-function ArchiveRow({ tender, portalId }: { tender: ArchivedTender | ArchivedGemTender; portalId: string }) {
+function ArchiveRow({ tender }: { tender: ArchivedGemTender }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   
-  // Use appropriate delete hook based on portal
-  const deleteTender18 = useDeleteArchiveTender18()
-  const deleteGem = useDeleteArchiveGemTender()
-  
-  const deleteMutation = portalId === 'tender18' ? deleteTender18 : deleteGem
+  const deleteMutation = useDeleteArchiveGemTender()
 
   const reason = REASON_LABELS[tender.archive_reason] ?? {
     label: tender.archive_reason,
@@ -265,17 +237,16 @@ function ArchiveRow({ tender, portalId }: { tender: ArchivedTender | ArchivedGem
 export default function ArchivePage() {
   const navigate = useNavigate()
 
-  const [selectedPortal, setSelectedPortal] = useState<string>('tender18')
+  const [selectedPortal, setSelectedPortal] = useState<string>('gem')
   const [selectedState, setSelectedState] = useState<string>('all')
   const [selectedReason, setSelectedReason] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState<string>('')
 
-  // Fetch data based on selected portal
-  const { data: tender18Tenders = [], isLoading: isLoadingTender18 } = useArchiveTender18Tenders()
+  // Fetch data for selected portal
   const { data: gemTenders = [], isLoading: isLoadingGem } = useArchiveGemTenders()
 
-  const isLoading = selectedPortal === 'tender18' ? isLoadingTender18 : isLoadingGem
-  const tenders = selectedPortal === 'tender18' ? tender18Tenders : gemTenders
+  const isLoading = isLoadingGem
+  const tenders = gemTenders
 
   const allStates = useMemo(() => {
     return getUniqueStates(tenders)
@@ -322,7 +293,12 @@ export default function ArchivePage() {
   }, [filtered])
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="p-6 max-w-7xl mx-auto space-y-6"
+    >
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -346,7 +322,7 @@ export default function ArchivePage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-2 bg-slate-100/80 backdrop-blur-md rounded-lg px-3 py-2 border border-slate-200/60">
           <Archive size={14} className="text-slate-500" />
           <span className="text-sm font-medium text-slate-700" style={lufgaSemiboldStyle}>
             {tenders.length} total archived
@@ -355,7 +331,7 @@ export default function ArchivePage() {
       </div>
 
       {/* Controls */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="glass-card rounded-xl p-4">
         <div className="flex flex-wrap items-center gap-3">
           {/* Portal selector */}
           <div className="flex items-center gap-1.5">
@@ -525,13 +501,13 @@ export default function ArchivePage() {
               </thead>
               <tbody>
                 {sortedFiltered.map((t) => (
-                  <ArchiveRow key={t.id} tender={t} portalId={selectedPortal} />
+                  <ArchiveRow key={t.id} tender={t} />
                 ))}
               </tbody>
             </table>
           </div>
         )}
       </div>
-    </div>
+    </motion.div>
   )
 }

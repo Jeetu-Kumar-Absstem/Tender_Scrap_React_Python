@@ -1,5 +1,5 @@
 // src/config/portals.ts
-import { Globe, Building2, FileSearch, Award, Shield } from 'lucide-react'
+import { Building2, FileSearch, Award, Shield } from 'lucide-react'
 
 export interface PortalConfig {
   id: string
@@ -15,18 +15,6 @@ export interface PortalConfig {
 }
 
 export const PORTALS: PortalConfig[] = [
-  {
-    id: 'tender18',
-    name: 'Tender18.com',
-    icon: Globe,
-    color: 'blue',
-    description: 'PSA plant tenders from Tender18.com',
-    tableName: 'tender18_tenders',
-    enabled: true,
-    comingSoon: false,
-    scraperEndpoint: '/api/run-type-d',
-    statusEndpoint: '/api/status-type-d',
-  },
   {
     id: 'gem',
     name: 'GeM.gov',

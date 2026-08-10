@@ -98,101 +98,28 @@ except ImportError:
 
 # ─── Configuration ──────────────────────────────────────────────────────
 
-# KEYWORD_CATEGORIES = {
-#     "psa": [
-#         "psa plant",
-#         "psa nitrogen plant",
-#         "psa oxygen plant",
-#         "psa amc",
-#         "psa cmc",
-#         "psa plant cmc"
-#     ],
-#     "oxygen": [
-#         "oxygen plant",
-#         "oxygen psa plant",
-#         "oxygen gas generation",
-#         "oxygen gas generator",
-#         "psa oxygen",
-#         "oxygen generation plant",
-#         "On-site oxygen generation system",
-#         "Oxygen concentrator plant",
-#         "District hospital oxygen plant",
-#         "Medical college oxygen plant",
-#     ],
-#     "nitrogen": [
-#         "nitrogen gas plant",
-#         "nitrogen psa plant",
-#         "nitrogen gas generation",
-#         "nitrogen gas generator",
-#         "psa nitrogen",
-#         "nitrogen generation plant",
-#         "On-site nitrogen generation system"
-#     ],
-#     "comprehensive maintenance contract": [
-#         "comprehensive maintenance contract psa plant",
-#         "comprehensive maintenance contract oxygen plant",
-#         "comprehensive maintenance contract nitrogen plant",
-#         "annual maintenance contract psa plant",
-#         "annual maintenance contract oxygen plant",
-#         "annual maintenance contract nitrogen plant",
-#         "Comprehensive annual maintenance contract of psa oxygen generation plant",
-#         "Comprehensive annual maintenance contract psa plant",
-#         "Comprehensive annual maintenance contract nitrogen plant",
-#         "preventive maintenance oxygen generator",
-#         "oxygen plant repair maintenance",
-#         "nitrogen plant repair maintenance",
-#         "amc psa oxygen plant",
-#         "cmc psa oxygen plant",
-#         "amc psa nitrogen plant",
-#         "cmc psa nitrogen plant",
-#         "breakdown maintenance oxygen plant",
-#         "breakdown maintenance nitrogen plant",
-#         "breakdown maintenance psa plant",
-#         "amc psa plant",
-#         "cmc psa plant",
-#         "customized amc/cmc for pre-owned products - psa plant",
-#         "customized amc/cmc for pre-owned products - oxygen psa plant",
-#         "customized amc/cmc for pre-owned products - nitrogen psa plant",
-#         "customized amc/cmc for pre-owned products - nitrogen gas plant",
-#         "customized amc/cmc for pre-owned products - psa oxygen generation plant",
-#         "customized amc/cmc for pre-owned products - comprehensive annual maintenance contract of psa oxygen generation plant",
-#         "amc tender"
-#     ],
-#     "Pressure Swing Adsorption plant": [
-#         "Pressure Swing Adsorption plant",
-#         "Pressure Swing Adsorption oxygen generator",
-#         "Pressure Swing Adsorption nitrogen generator",
-#     ],
-#     "medical oxygen plant": [
-#         "medical oxygen plant",
-#         "medical oxygen generator",
-#         "medical oxygen generation plant",
-#         "medical oxygen"
-#     ],
-#     "industrial oxygen": [
-#         "industrial oxygen generator",
-#         "industrial nitrogen generator",
-#     ],
-#     "Molecular sieve oxygen plant": [
-#         "Molecular sieve oxygen plant",
-#         "Molecular sieve refilling"
-#     ],
-#     "Zeolite molecular sieve plant": [
-#         "Zeolite molecular sieve plant",
-#         "Zeolite/sieve replacement"
-#     ],
-#     "Carbon molecular sieve nitrogen plant": [
-#         "Carbon molecular sieve nitrogen plant"
-#     ],
-#     "camc": [
-#         "camc oxygen plant",
-#         "camc nitrogen plant",    
-
-#     ],
-# }
 
 
 KEYWORD_CATEGORIES = {
+    "psa": [
+        "psa plant",
+        "psa nitrogen plant",
+        "psa oxygen plant",
+        "psa amc",
+        "psa cmc",
+        "psa plant cmc",
+        "operation and maintenance of psa plant",
+        "sitc of psa oxygen plant",
+        "erection and commissioning psa",
+        "supply installation commissioning psa",
+        "design supply installation testing commissioning psa",
+        "retrofitting upgradation of oxygen plant",
+        "refurbishment of psa plant",
+        "compressor overhaul psa plant",
+        "psa plant repair maintenance installation",
+        "camc psa hospital",
+        "sitc oxygen generation plant",
+    ],
     "oxygen": [
         "oxygen plant",
         "oxygen psa plant",
@@ -202,8 +129,133 @@ KEYWORD_CATEGORIES = {
         "oxygen generation plant",
         "On-site oxygen generation system",
         "Oxygen concentrator plant",
-],
-
+        "District hospital oxygen plant",
+        "Medical college oxygen plant",
+        "on-site nitrogen generation system",
+        "nitrogen generation plant",
+        "oxygen generation system for hospital",
+        "replacement of oxygen plant",
+        "oxygen plant comprehensive maintenance",
+    ],
+    "nitrogen": [
+        "nitrogen gas plant",
+        "nitrogen psa plant",
+        "nitrogen gas generation",
+        "nitrogen gas generator",
+        "psa nitrogen",
+        "nitrogen generation plant",
+        "On-site nitrogen generation system",
+        "glass industry nitrogen plant",
+        "pharma industry nitrogen plant",
+        "food packaging nitrogen plant",
+        "nitrogen plant annual maintenance",
+    ],
+    "comprehensive maintenance contract": [
+        "comprehensive maintenance contract psa plant",
+        "comprehensive maintenance contract oxygen plant",
+        "comprehensive maintenance contract nitrogen plant",
+        "annual maintenance contract psa plant",
+        "annual maintenance contract oxygen plant",
+        "annual maintenance contract nitrogen plant",
+        "Comprehensive annual maintenance contract of psa oxygen generation plant",
+        "Comprehensive annual maintenance contract psa plant",
+        "Comprehensive annual maintenance contract nitrogen plant",
+        "preventive maintenance oxygen generator",
+        "oxygen plant repair maintenance",
+        "nitrogen plant repair maintenance",
+        "amc psa oxygen plant",
+        "cmc psa oxygen plant",
+        "amc psa nitrogen plant",
+        "cmc psa nitrogen plant",
+        "breakdown maintenance oxygen plant",
+        "breakdown maintenance nitrogen plant",
+        "breakdown maintenance psa plant",
+        "amc psa plant",
+        "cmc psa plant",
+        "customized amc/cmc for pre-owned products - psa plant",
+        "customized amc/cmc for pre-owned products - oxygen psa plant",
+        "customized amc/cmc for pre-owned products - nitrogen psa plant",
+        "customized amc/cmc for pre-owned products - nitrogen gas plant",
+        "customized amc/cmc for pre-owned products - psa oxygen generation plant",
+        "customized amc/cmc for pre-owned products - comprehensive annual maintenance contract of psa oxygen generation plant",
+        "amc tender",
+        "preventive maintenance contract",
+        "comprehensive amc oxygen plant",
+        "non-comprehensive amc",
+        "rate contract amc psa",
+        "annual rate contract",
+        "spare parts supply amc",
+        "warranty and post-warranty maintenance",
+        "repair and maintenance of plant",
+        "facility management services oxygen",
+        "medical oxygen operation and maintenance tender",
+        "psa oxygen plant amc tender",
+        "psa nitrogen plant amc tender",
+        "o&m psa plant",
+    ],
+    "Pressure Swing Adsorption plant": [
+        "Pressure Swing Adsorption plant",
+        "Pressure Swing Adsorption oxygen generator",
+        "Pressure Swing Adsorption nitrogen generator",
+        "zeolite molecular sieve",
+    ],
+    "medical oxygen plant": [
+        "medical oxygen plant",
+        "medical oxygen generator",
+        "medical oxygen generation plant",
+        "medical oxygen generation system",
+        "medical gas pipeline system",
+        "oxygen generation system for hospital",
+        "liquid medical oxygen",
+    ],
+    "industrial oxygen": [
+        "industrial oxygen generator",
+        "industrial nitrogen generator",
+        "psu industrial oxygen plant",
+        "steel plant oxygen plant",
+        "industrial oxygen plant",
+        "industrial nitrogen plant",
+        # // we can add industrial oxygen plant and industrial nitrogen plant as well
+    ],
+    "Molecular sieve oxygen plant": [
+        "Molecular sieve oxygen plant",
+        "Molecular sieve refilling",
+        "zeolite molecular sieve plant",
+        "zeolite sieve replacement",
+        "air dryer maintenance",
+    ],
+    "Zeolite molecular sieve plant": [
+        "Zeolite molecular sieve plant",
+        "Zeolite/sieve replacement",
+        "Carbon molecular sieve nitrogen plant",
+    ],
+    "Carbon molecular sieve nitrogen plant": [
+        "Carbon molecular sieve nitrogen plant",
+    ],
+    "camc": [
+        "camc oxygen plant",
+        "camc nitrogen plant",
+        "Comprehensive Annual Maintenance Contract psa plant",
+    ],
+    "government hospital": [
+        "government hospital psa plant",
+        "health department oxygen tender",
+        "national health mission oxygen plant",
+        "state medical services corporation",
+        "cghs oxygen plant",
+        "esic hospital oxygen plant",
+        "railway hospital oxygen plant",
+        "defence hospital oxygen plant",
+        "pm cares oxygen plant",
+    ],
+    "sitc": [
+        "turnkey supply installation testing commissioning",
+        "sitc of psa oxygen plant",
+        "sitc oxygen generation plant",
+        "design supply installation testing commissioning psa",
+        "erection and commissioning psa",
+        "supply installation commissioning psa",
+    ],
 }
 
 EXCLUDE_KEYWORDS = [
@@ -823,6 +875,9 @@ def prepare_tender_data(raw_data: dict) -> dict:
     
     bid_number = raw_data.get('bid_number')
     bid_url = raw_data.get('bid_url')
+    # Ensure full URL — stored href is sometimes a relative path like /showbidDocument/123
+    # get_pdf_url() always returns https://bidplus.gem.gov.in/showbidDocument/<id>
+    bid_url = get_pdf_url(bid_url) if bid_url else bid_url
     url_hash = generate_url_hash(bid_url) if bid_url else None
     
     organization = raw_data.get('organization') or raw_data.get('department')
@@ -976,14 +1031,22 @@ async def _go_to_next_page(page) -> bool:
 # ─── Main Scraper ──────────────────────────────────────────────────────
 
 async def scrape_gem():
-    logger.info("=" * 60)
-    logger.info("GeM Tender Scraper - Reference Tracking & Bulk Insert")
-    logger.info(f"Categories: {len(KEYWORD_CATEGORIES)}")
-    total_keywords = sum(len(kw) for kw in KEYWORD_CATEGORIES.values())
-    logger.info(f"Total Keywords: {total_keywords}")
-    logger.info(f"PDF Library: {PDF_LIB_NAME or 'None'}")
-    logger.info("=" * 60)
-    
+    # ─── Startup keyword summary printed FIRST before anything else ───
+    _total_kw = sum(len(kws) for kws in KEYWORD_CATEGORIES.values())
+    print(f"\n{'='*60}")
+    print(f"[KEYWORD SUMMARY] {len(KEYWORD_CATEGORIES)} categories | {_total_kw} total keywords | PDF lib: {PDF_LIB_NAME or 'None'}")
+    print(f"{'='*60}")
+    for cat_name, cat_keywords in KEYWORD_CATEGORIES.items():
+        print(f"  📂 [{cat_name}] — {len(cat_keywords)} keywords:")
+        for kw in cat_keywords:
+            print(f"       • {kw}")
+    print(f"{'='*60}")
+    print(f"  🔍 Every PDF searched against ALL {_total_kw} keywords across all categories")
+    print(f"  🚫 Exclude keywords: {len(EXCLUDE_KEYWORDS)}")
+    for kw in EXCLUDE_KEYWORDS:
+        print(f"       • {kw}")
+    print(f"{'='*60}\n")
+
     # ─── Initialize Supabase ──────────────────────────────────────────
     client = _get_client()
     
@@ -1006,12 +1069,11 @@ async def scrape_gem():
     # Track bids processed in this session
     processed_in_session = set()
     all_results = []
+    pending_email = []     # matches collected for email — survives Ctrl+C via finally
     
     # Batch buffers
     ref_batch = []        # ALL new references (to be inserted)
-    tender_batch = []     # ONLY matched tenders (to be inserted)
     REF_BATCH_SIZE = 100
-    TENDER_BATCH_SIZE = 50
     
     # Statistics - ACCURATE counting
     total_bids_seen = 0
@@ -1163,11 +1225,18 @@ async def scrape_gem():
                             total_pdfs_downloaded += 1
                             logger.info(f"      ✅ PDF extracted ({len(pdf_text)} chars)")
                             
-                            # ─── STEP 5: Check keywords ─────────────────────
+                            # ─── STEP 5: Check ALL keywords from ALL categories ──
+                            # Search every category's keywords so one PDF download
+                            # covers all possible matches — ref is then safe to index.
                             matched_keyword = None
-                            for priority_keyword in keywords:
-                                if simple_match(pdf_text, priority_keyword):
-                                    matched_keyword = priority_keyword
+                            matched_category_name = None
+                            for cat_name, cat_keywords in KEYWORD_CATEGORIES.items():
+                                for kw in cat_keywords:
+                                    if simple_match(pdf_text, kw):
+                                        matched_keyword = kw
+                                        matched_category_name = cat_name
+                                        break
+                                if matched_keyword:
                                     break
                             
                             # ─── STEP 6: Exclude keyword filter ────────────
@@ -1179,6 +1248,7 @@ async def scrape_gem():
                                 if excluded_by:
                                     logger.info(f"      🚫 EXCLUDED! '{matched_keyword}' but found '{excluded_by}'")
                                     matched_keyword = None
+                                    matched_category_name = None
                             
                             # ─── STEP 7: ALWAYS add reference ──────────────
                             ref_batch.append(bid_number)
@@ -1186,7 +1256,7 @@ async def scrape_gem():
                             
                             # ─── STEP 8: ONLY if match, add tender ─────────
                             if matched_keyword:
-                                logger.info(f"      ✅ MATCH FOUND! (keyword: '{matched_keyword}')")
+                                logger.info(f"      ✅ MATCH FOUND! (keyword: '{matched_keyword}' | category: '{matched_category_name}')")
                                 
                                 raw_data = {
                                     'bid_number': bid_number,
@@ -1195,7 +1265,7 @@ async def scrape_gem():
                                     'web_category': web_category,
                                     'items': web_category,
                                     'matched_keyword': matched_keyword,
-                                    'matched_category': category,
+                                    'matched_category': matched_category_name,
                                     'department': department,
                                     'organization': organization,
                                     'end_date': end_date.strip() if end_date else "",
@@ -1203,19 +1273,17 @@ async def scrape_gem():
                                 }
                                 
                                 tender_data = prepare_tender_data(raw_data)
-                                tender_batch.append(tender_data)
+                                
+                                # Insert immediately — safe even if closed mid-run
+                                inserted = bulk_insert_tenders([tender_data], client, gem_refs)
+                                total_tenders_inserted += inserted
+                                today_inserted = bulk_insert_today_tenders([tender_data], client, processed_refs)
+                                total_today_inserted += today_inserted
+                                
                                 all_results.append(raw_data)
+                                pending_email.append(raw_data)  # collected for final email
                                 category_matches += 1
                                 total_matches_found += 1
-                                
-                                # Flush tender batch if full
-                                if len(tender_batch) >= TENDER_BATCH_SIZE:
-                                    print(f"\n[DB] 🔄 Flushing {len(tender_batch)} tenders...")
-                                    inserted = bulk_insert_tenders(tender_batch, client, gem_refs)
-                                    total_tenders_inserted += inserted
-                                    today_inserted = bulk_insert_today_tenders(tender_batch, client, processed_refs)
-                                    total_today_inserted += today_inserted
-                                    tender_batch = []
                             else:
                                 logger.info(f"      ❌ No match found - reference will be stored")
                             
@@ -1256,14 +1324,6 @@ async def scrape_gem():
                     total_refs_inserted += inserted
                     ref_batch = []
                 
-                if tender_batch:
-                    print(f"\n[DB] 🔄 Flushing {len(tender_batch)} remaining tenders...")
-                    inserted = bulk_insert_tenders(tender_batch, client, gem_refs)
-                    total_tenders_inserted += inserted
-                    today_inserted = bulk_insert_today_tenders(tender_batch, client, processed_refs)
-                    total_today_inserted += today_inserted
-                    tender_batch = []
-                
                 if list(KEYWORD_CATEGORIES.keys())[-1] != category:
                     logger.info(f"\n⏳ Waiting 3 seconds before next category...")
                     await asyncio.sleep(3)
@@ -1279,14 +1339,37 @@ async def scrape_gem():
                 total_refs_inserted += inserted
                 ref_batch = []
             
-            if tender_batch:
-                print(f"\n[DB] 🔄 Final flush of {len(tender_batch)} tenders...")
-                inserted = bulk_insert_tenders(tender_batch, client, gem_refs)
-                total_tenders_inserted += inserted
-                today_inserted = bulk_insert_today_tenders(tender_batch, client, processed_refs)
-                total_today_inserted += today_inserted
-                tender_batch = []
-            
+            # ─── Email on exit (Ctrl+C or normal completion) ─────────
+            if _EMAIL_ENABLED:
+                if pending_email:
+                    print(f"\n[EMAIL] 📧 Sending digest for {len(pending_email)} tender(s)...")
+                    email_tenders = []
+                    for raw in pending_email:
+                        title = clean_title(raw.get("web_category") or raw.get("items") or "")
+                        bid_url = get_pdf_url(raw.get("bid_url", ""))  # ensure full bidplus.gem.gov.in URL
+                        email_tenders.append({
+                            "title":            title or raw.get("bid_number", "Untitled"),
+                            "reference_number": raw.get("bid_number"),
+                            "organization":     raw.get("organization") or raw.get("department"),
+                            "location":         None,
+                            "deadline":         _normalize_date(raw.get("end_date")),
+                            "estimated_value":  None,
+                            "source_url":       bid_url,
+                            "source_site":      "GeM",
+                            "url_hash":         generate_url_hash(bid_url) if bid_url else None,
+                            "keywords_matched": [raw["matched_keyword"]] if raw.get("matched_keyword") else [],
+                            "document_urls":    [raw["pdf_url"]] if raw.get("pdf_url") else [],
+                        })
+                    sent = send_digest(email_tenders)
+                    if sent:
+                        print("[EMAIL] ✅ Digest sent successfully.")
+                    else:
+                        print("[EMAIL] ⚠️  Digest NOT sent — check Brevo logs.")
+                else:
+                    print("\n[EMAIL] ℹ️  No matches found — digest skipped.")
+            else:
+                print("\n[EMAIL] ⚠️  Email disabled (brevo module not loaded).")
+
             await context.close()
             await browser.close()
     
@@ -1334,38 +1417,7 @@ async def scrape_gem():
         if len(all_results) > 5:
             print(f"  ... and {len(all_results) - 5} more")
 
-    # ─── Email Digest ──────────────────────────────────────────────────────
-    if _EMAIL_ENABLED:
-        if all_results:
-            print(f"\n[EMAIL] 📧 Sending digest for {len(all_results)} new GeM tender(s)...")
-
-            email_tenders = []
-            for raw in all_results:
-                title = clean_title(raw.get("web_category") or raw.get("items") or "")
-                bid_url = raw.get("bid_url", "")
-                email_tenders.append({
-                    "title":            title or raw.get("bid_number", "Untitled"),
-                    "reference_number": raw.get("bid_number"),
-                    "organization":     raw.get("organization") or raw.get("department"),
-                    "location":         None,
-                    "deadline":         _normalize_date(raw.get("end_date")),
-                    "estimated_value":  None,
-                    "source_url":       bid_url,
-                    "source_site":      "GeM",
-                    "url_hash":         generate_url_hash(bid_url) if bid_url else None,
-                    "keywords_matched": [raw["matched_keyword"]] if raw.get("matched_keyword") else [],
-                    "document_urls":    [raw["pdf_url"]] if raw.get("pdf_url") else [],
-                })
-
-            sent = send_digest(email_tenders)
-            if sent:
-                print("[EMAIL] ✅ Digest sent successfully.")
-            else:
-                print("[EMAIL] ⚠️  Digest NOT sent — check Brevo logs.")
-        else:
-            print("\n[EMAIL] ℹ️  No new tenders found — digest skipped.")
-    else:
-        print("\n[EMAIL] ⚠️  Email disabled (brevo module not loaded).")
+    # Email is now sent in the finally block above — works on Ctrl+C too
 
     return all_results
 

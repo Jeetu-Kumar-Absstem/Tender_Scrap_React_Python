@@ -78,17 +78,36 @@ export function useDashboardStats() {
     queryFn: async (): Promise<DashboardStats> => {
       const today = new Date().toISOString().split('T')[0]
 
-      const [totalRes, todayRes, runsRes, siteRes, kwRes] = await Promise.all([
+      const [
+        totalRes,
+        todayRes,
+        gemTotalRes,
+        gemTodayRes,
+        runsRes,
+        siteRes,
+        kwRes,
+        gemKwRes,
+      ] = await Promise.all([
         supabase.from('tenders').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'PASS'),
         supabase.from('tenders').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'PASS').gte('scraped_at', today),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase as any).from('gem_tenders').select('*', { count: 'exact', head: true }).is('deleted_at', null),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase as any).from('gem_tenders').select('*', { count: 'exact', head: true }).is('deleted_at', null).gte('scraped_at', today),
         supabase.from('scrape_runs').select('started_at,status,completed_at,new_count,sites_ok,sites_total,email_sent,id').is('deleted_at', null).order('started_at', { ascending: false }).limit(1),
         supabase.from('tenders').select('source_site').is('deleted_at', null).eq('status', 'PASS'),
         supabase.from('tenders').select('keywords_matched').is('deleted_at', null).eq('status', 'PASS'),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase as any).from('gem_tenders').select('keywords_matched').is('deleted_at', null),
       ])
 
       const siteCounts: Record<string, number> = {}
       for (const row of (siteRes.data ?? []) as Pick<Tender, 'source_site'>[]) {
         siteCounts[row.source_site] = (siteCounts[row.source_site] ?? 0) + 1
+      }
+      // Add GeM as a site in sources
+      if (gemTotalRes.count) {
+        siteCounts['GeM.gov'] = gemTotalRes.count
       }
 
       const kwCounts: Record<string, number> = {}
@@ -98,16 +117,33 @@ export function useDashboardStats() {
         }
       }
 
+      const gemKwCounts: Record<string, number> = {}
+      for (const row of (gemKwRes.data ?? []) as { keywords_matched?: string[] }[]) {
+        for (const kw of row.keywords_matched ?? []) {
+          gemKwCounts[kw] = (gemKwCounts[kw] ?? 0) + 1
+        }
+      }
+
       const lastRun = ((runsRes.data ?? [])[0] ?? null) as ScrapeRun | null
 
+      const eprocTotal = totalRes.count ?? 0
+      const gemTotal = gemTotalRes.count ?? 0
+      const eprocToday = todayRes.count ?? 0
+      const gemToday = gemTodayRes.count ?? 0
+
       return {
-        total_tenders: totalRes.count ?? 0,
-        new_today: todayRes.count ?? 0,
+        total_tenders: eprocTotal + gemTotal,
+        eproc_total: eprocTotal,
+        gem_total: gemTotal,
+        new_today: eprocToday + gemToday,
+        eproc_today: eprocToday,
+        gem_today: gemToday,
         sites_monitored: Object.keys(siteCounts).length,
         last_run_at: lastRun?.started_at ?? null,
         last_run_status: lastRun?.status ?? null,
         tenders_by_site: Object.entries(siteCounts).map(([site, count]) => ({ site, count })).sort((a, b) => b.count - a.count).slice(0, 10),
         tenders_by_keyword: Object.entries(kwCounts).map(([keyword, count]) => ({ keyword, count })).sort((a, b) => b.count - a.count),
+        gem_keywords: Object.entries(gemKwCounts).map(([keyword, count]) => ({ keyword, count })).sort((a, b) => b.count - a.count),
       }
     },
     refetchInterval: 60_000,

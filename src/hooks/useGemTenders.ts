@@ -19,10 +19,33 @@ async function fetchGemTenders(): Promise<GemTender[]> {
   return data || []
 }
 
+async function fetchGemTodayTenders(): Promise<GemTender[]> {
+  const { data, error } = await db
+    .from('today_gem_tenders')
+    .select('*')
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+
+  if (error) throw new Error(error.message)
+  return data || []
+}
+
 export function useGemTenders() {
   return useQuery({
     queryKey: ['gem-tenders'],
     queryFn: fetchGemTenders,
+    staleTime: Infinity,
+    gcTime: 1000 * 60 * 60 * 24,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  })
+}
+
+export function useGemTodayTenders() {
+  return useQuery({
+    queryKey: ['gem-tenders', 'today'],
+    queryFn: fetchGemTodayTenders,
     staleTime: Infinity,
     gcTime: 1000 * 60 * 60 * 24,
     refetchOnMount: false,
@@ -45,6 +68,7 @@ export function useGemTendersActions() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gem-tenders'] })
+      queryClient.invalidateQueries({ queryKey: ['gem-tenders', 'today'] })
     },
   })
 
@@ -96,6 +120,7 @@ export function useArchiveGemActions() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gem-tenders'] })
+      queryClient.invalidateQueries({ queryKey: ['gem-tenders', 'today'] })
       queryClient.invalidateQueries({ queryKey: ['archive-gem-tenders'] })
     },
   })

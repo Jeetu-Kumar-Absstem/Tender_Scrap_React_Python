@@ -52,7 +52,7 @@ function isDatePast(dateStr: string | null): boolean {
 
 // ─── row component ───────────────────────────────────────────────────────────
 
-function ArchiveRow({ tender, portalId }: { tender: ArchivedGemTender; portalId: string }) {
+function ArchiveRow({ tender }: { tender: ArchivedGemTender }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   
   const deleteMutation = useDeleteArchiveGemTender()
@@ -501,7 +501,7 @@ export default function ArchivePage() {
               </thead>
               <tbody>
                 {sortedFiltered.map((t) => (
-                  <ArchiveRow key={t.id} tender={t} portalId={selectedPortal} />
+                  <ArchiveRow key={t.id} tender={t} />
                 ))}
               </tbody>
             </table>

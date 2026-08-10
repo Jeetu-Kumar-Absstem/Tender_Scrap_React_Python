@@ -1,5 +1,5 @@
 // src/config/portals.ts
-import { Globe, Building2, FileSearch, Award, Shield } from 'lucide-react'
+import { Building2, FileSearch, Award, Shield } from 'lucide-react'
 
 export interface PortalConfig {
   id: string

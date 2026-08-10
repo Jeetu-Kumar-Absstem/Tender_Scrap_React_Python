@@ -1,6 +1,6 @@
 // src/components/dashboard/Layout.tsx
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, FileSearch, Activity, Play, Loader2, CheckCircle2, AlertCircle, X, ChevronUp, AlertTriangle, Square, Terminal, ChevronDown, Trash2, LogOut, Hospital, Globe } from 'lucide-react'
+import { LayoutDashboard, FileSearch, Activity, X, ChevronUp, AlertTriangle, Terminal, ChevronDown, Trash2, LogOut, Hospital, Globe } from 'lucide-react'
 import { usePipeline } from '../../hooks/usePipeline'
 import { useLogs } from '../../hooks/useLogs'
 import { supabase } from '../../lib/supabase'

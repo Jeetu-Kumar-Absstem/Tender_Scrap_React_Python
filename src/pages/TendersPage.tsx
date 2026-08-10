@@ -86,8 +86,7 @@ export default function TendersPage() {
   }
 
   const isBusy = isRunning || loading || pendingStart || !statusLoaded
-  const lastSuccess = status?.pipeline?.last_result?.success
-  const runStatus   = status?.pipeline?.last_result?.status
+  const lastSuccess = status?.last_result?.success
 
   const { data, isLoading: isLoadingAll, isFetchingNextPage, fetchNextPage, hasNextPage } = useTenders(filters)
   const { data: todaysTenders = [], isLoading: isLoadingToday } = useTodaysTenders()
@@ -191,7 +190,7 @@ export default function TendersPage() {
                 <Clock size={12} />
                 <span>Status: {isBusy ? 'Running...' : 'Idle'}</span>
               </div>
-              {status?.pipeline?.last_result && (
+              {status?.last_result && (
                 <div className={clsx('flex items-center gap-1.5', lastSuccess ? 'text-emerald-600' : 'text-red-500')}>
                   {lastSuccess ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
                   <span>{lastSuccess ? 'Last run succeeded' : 'Last run failed'}</span>

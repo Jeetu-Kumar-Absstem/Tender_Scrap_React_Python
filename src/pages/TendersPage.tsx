@@ -1,10 +1,12 @@
-// src/pages/TendersPage.tsx
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useTenders } from '../hooks/useTenders'
+import { useTenders, useTodaysTenders } from '../hooks/useTenders'
+import { usePipeline } from '../hooks/usePipeline'
 import TenderCard from '../components/tenders/TenderCard'
-import { Search, SlidersHorizontal, X, Loader2 } from 'lucide-react'
+import { Search, SlidersHorizontal, X, Loader2, Play, Square, CheckCircle2, AlertCircle, Clock, Activity } from 'lucide-react'
 import type { TenderFilters, SiteType, UserStatus } from '../types/tender'
 import { useInView } from '../hooks/useInView'
+import { motion } from 'framer-motion'
+import { clsx } from 'clsx'
 
 const KEYWORDS = [
   'psa plant',
@@ -62,9 +64,33 @@ export default function TendersPage() {
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([])
   const [showKeywordDropdown, setShowKeywordDropdown] = useState(false)
   const [keywordQuery, setKeywordQuery] = useState('')
+  const [eprocView, setEprocView] = useState<'all' | 'today'>('all')
   const keywordFilterRef = useRef<HTMLDivElement | null>(null)
 
-  const { data, isLoading, isFetchingNextPage, fetchNextPage, hasNextPage } = useTenders(filters)
+  // Scraper pipeline hook
+  const { isRunning, loading, statusLoaded, error, status, trigger, stop } = usePipeline()
+  const [pendingStart, setPendingStart] = useState(false)
+
+  useEffect(() => {
+    if (isRunning || error) setPendingStart(false)
+  }, [isRunning, error])
+
+  const handleTrigger = () => {
+    setPendingStart(true)
+    trigger()
+  }
+
+  const handleStop = async () => {
+    setPendingStart(false)
+    await stop()
+  }
+
+  const isBusy = isRunning || loading || pendingStart || !statusLoaded
+  const lastSuccess = status?.pipeline?.last_result?.success
+  const runStatus   = status?.pipeline?.last_result?.status
+
+  const { data, isLoading: isLoadingAll, isFetchingNextPage, fetchNextPage, hasNextPage } = useTenders(filters)
+  const { data: todaysTenders = [], isLoading: isLoadingToday } = useTodaysTenders()
   const allTenders = data?.pages.flatMap(p => p.tenders) ?? []
   const total = data?.pages[0]?.total ?? 0
   const visibleTenders = selectedKeywords.length
@@ -117,10 +143,15 @@ export default function TendersPage() {
   }, [])
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-4">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="p-6 max-w-5xl mx-auto space-y-4"
+    >
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Tenders</h1>
+          <h1 className="text-xl font-semibold text-slate-900">eProcurement Tenders</h1>
           <p className="text-sm text-slate-500 mt-0.5">{displayedCount.toLocaleString()} results</p>
         </div>
         <button
@@ -134,6 +165,99 @@ export default function TendersPage() {
               {activeFilters.length + selectedKeywords.length}
             </span>
           )}
+        </button>
+      </div>
+
+      {/* eProcurement Scraper Control Card */}
+      <div className="glass-card rounded-xl p-5 relative overflow-hidden">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-sm">
+                <Activity size={14} />
+              </div>
+              <h2 className="text-sm font-semibold text-slate-900">
+                eProcurement Pipeline Scraper
+              </h2>
+              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                Type A & Type B
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              Monitors national & state eProcurement portals for PSA oxygen & nitrogen plant tenders.
+            </p>
+            <div className="flex items-center gap-4 mt-3 flex-wrap text-xs text-slate-500">
+              <div className="flex items-center gap-1.5">
+                <Clock size={12} />
+                <span>Status: {isBusy ? 'Running...' : 'Idle'}</span>
+              </div>
+              {status?.pipeline?.last_result && (
+                <div className={clsx('flex items-center gap-1.5', lastSuccess ? 'text-emerald-600' : 'text-red-500')}>
+                  {lastSuccess ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                  <span>{lastSuccess ? 'Last run succeeded' : 'Last run failed'}</span>
+                </div>
+              )}
+              {error && (
+                <div className="flex items-center gap-1.5 text-red-500">
+                  <AlertCircle size={12} />
+                  <span>{error.includes('already running') ? 'Already running' : 'API offline'}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-shrink-0 relative">
+            {isBusy ? (
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleStop}
+                className="relative flex items-center gap-2 px-4 py-2 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-sm font-medium"
+              >
+                <span className="radar-pulse-ring pointer-events-none" />
+                <Square size={13} fill="currentColor" />
+                Stop Execution
+              </motion.button>
+            ) : (
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleTrigger}
+                className="relative flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow text-sm font-medium transition-all"
+              >
+                <Play size={13} />
+                Start Execution
+              </motion.button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Sub-tabs for All eProcurement and Today's eProcurement */}
+      <div className="flex flex-wrap gap-2 mt-4">
+        <button
+          type="button"
+          onClick={() => setEprocView('all')}
+          className={clsx(
+            'px-4 py-2 rounded-full text-sm font-medium transition-all',
+            eprocView === 'all'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+          )}
+        >
+          All eProcurement
+        </button>
+        <button
+          type="button"
+          onClick={() => setEprocView('today')}
+          className={clsx(
+            'px-4 py-2 rounded-full text-sm font-medium transition-all',
+            eprocView === 'today'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+          )}
+        >
+          Today's eProcurement ({todaysTenders.length})
         </button>
       </div>
 
@@ -276,21 +400,23 @@ export default function TendersPage() {
         </div>
       )}
 
-      {isLoading ? (
+      {(eprocView === 'today' ? isLoadingToday : isLoadingAll) ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 size={20} className="animate-spin text-blue-500" />
           <span className="ml-2 text-sm text-slate-500">Loading tenders...</span>
         </div>
-      ) : visibleTenders.length === 0 ? (
+      ) : (eprocView === 'today' ? todaysTenders : visibleTenders).length === 0 ? (
         <div className="text-center py-16"><p className="text-slate-400 text-sm">No tenders found.</p></div>
       ) : (
         <div className="space-y-3">
-          {visibleTenders.map(t => <TenderCard key={t.id} tender={t} />)}
-          <div ref={sentinelRef} className="py-4 flex justify-center">
-            {isFetchingNextPage && <Loader2 size={16} className="animate-spin text-blue-400" />}
-          </div>
+          {(eprocView === 'today' ? todaysTenders : visibleTenders).map(t => <TenderCard key={t.id} tender={t} />)}
+          {eprocView === 'all' && (
+            <div ref={sentinelRef} className="py-4 flex justify-center">
+              {isFetchingNextPage && <Loader2 size={16} className="animate-spin text-blue-400" />}
+            </div>
+          )}
         </div>
       )}
-    </div>
+    </motion.div>
   )
 }

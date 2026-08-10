@@ -1,9 +1,11 @@
 import { useDashboardStats, useTodaysTenders } from '../hooks/useTenders'
+import { useGemTodayTenders } from '../hooks/useGemTenders'
 import { formatDistanceToNow, parseISO } from 'date-fns'
-import { TrendingUp, Globe, FileText, Clock, Shield, ArrowRight } from 'lucide-react'
+import { TrendingUp, Globe, FileText, Clock, Shield, ArrowRight, FileSearch } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import TenderCard from '../components/tenders/TenderCard'
+import GemTenderCard from '../components/tenders/GemTenderCard'
 
 const lufgaRegularStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 400 } as const;
 const lufgaSemiboldStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 600 } as const;
@@ -34,7 +36,10 @@ function StatCard({ label, value, sub, icon: Icon, color }: {
 export default function DashboardPage() {
   const navigate = useNavigate()
   const { data: stats }  = useDashboardStats()
-  const { data: todays } = useTodaysTenders()
+  const { data: todaysEproc = [] } = useTodaysTenders()
+  const { data: todaysGem = [] } = useGemTodayTenders()
+
+  const totalTodayCount = (todaysEproc?.length ?? 0) + (todaysGem?.length ?? 0)
 
   return (
     <motion.div
@@ -68,25 +73,41 @@ export default function DashboardPage() {
         <motion.div
           whileHover={{ y: -2 }}
           transition={{ duration: 0.2 }}
-          className="glass-card rounded-xl p-5"
+          className="glass-card rounded-xl p-5 flex flex-col justify-between"
         >
-          <h2 className="text-sm font-semibold text-slate-700 mb-3" style={lufgaSemiboldStyle}>
-            Quick Actions
-          </h2>
-          <div className="space-y-2.5">
-            <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => navigate('/more-portals', { state: { portal: 'gem' } })}
-              className="w-full flex items-center justify-between px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-all shadow-sm hover:shadow"
-              style={lufgaSemiboldStyle}
-            >
-              <span className="flex items-center gap-2">
-                <Shield size={15} />
-                Go to GeM Portal
-              </span>
-              <ArrowRight size={14} />
-            </motion.button>
+          <div>
+            <h2 className="text-sm font-semibold text-slate-700 mb-3" style={lufgaSemiboldStyle}>
+              Quick Actions
+            </h2>
+            <div className="space-y-2">
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => navigate('/tenders')}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-all shadow-sm"
+                style={lufgaSemiboldStyle}
+              >
+                <span className="flex items-center gap-2">
+                  <FileSearch size={15} />
+                  Go to eProcurement
+                </span>
+                <ArrowRight size={14} />
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => navigate('/more-portals', { state: { portal: 'gem' } })}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-all shadow-sm"
+                style={lufgaSemiboldStyle}
+              >
+                <span className="flex items-center gap-2">
+                  <Shield size={15} />
+                  Go to GeM Portal
+                </span>
+                <ArrowRight size={14} />
+              </motion.button>
+            </div>
           </div>
         </motion.div>
 
@@ -128,11 +149,12 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {(todays?.length ?? 0) > 0 && (
+      {totalTodayCount > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-slate-700 mb-3">Today's Tenders ({todays!.length})</h2>
+          <h2 className="text-sm font-semibold text-slate-700 mb-3">Today's Tenders ({totalTodayCount})</h2>
           <div className="space-y-3">
-            {todays!.map(t => <TenderCard key={t.id} tender={t} />)}
+            {todaysEproc.map(t => <TenderCard key={t.id} tender={t} />)}
+            {todaysGem.map(t => <GemTenderCard key={t.id} tender={t} />)}
           </div>
         </div>
       )}

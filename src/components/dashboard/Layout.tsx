@@ -12,7 +12,7 @@ const lufgaSemiboldStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 600 
 
 const nav = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/tenders',   icon: FileSearch,      label: 'Tenders' },
+  { to: '/tenders',   icon: FileSearch,      label: 'eProcurement' },
   { to: '/more-portals', icon: Globe,        label: 'More Portals' },
   { to: '/hospitals', icon: Hospital,        label: 'Hospital Data' },
 ]
@@ -74,39 +74,12 @@ function LogPanel({ onClose }: { onClose: () => void }) {
 
 // ─── Sidebar inner content ────────────────────────────────────
 function SidebarContent({
-  isRunning, loading, statusLoaded, error, status, trigger, stop,
+  isRunning,
   isDisclaimerMinimized, setIsDisclaimerMinimized,
   isDisclaimerVisible, handleDismiss,
   showDisclaimer,
   logsOpen, setLogsOpen,
 }: any) {
-  const [pendingStart, setPendingStart] = useState(false)
-
-  // Clear optimistic state once the hook confirms it's actually running (or errored)
-  useEffect(() => {
-    if (isRunning || error) setPendingStart(false)
-  }, [isRunning, error])
-
-  const handleTrigger = () => {
-    setPendingStart(true)
-    trigger()
-  }
-
-  const isBusy = isRunning || loading || pendingStart || !statusLoaded
-
-  const lastSuccess = status?.pipeline?.last_result?.success
-  const runStatus   = status?.pipeline?.last_result?.status
-
-  const getStatusDisplay = () => {
-    if (runStatus === 'interrupted') return { label: 'Last run interrupted', icon: 'alert', color: 'text-amber-600' }
-    return {
-      label: lastSuccess ? 'Last run succeeded' : 'Last run failed',
-      icon:  lastSuccess ? 'check' : 'alert',
-      color: lastSuccess ? 'text-emerald-600' : 'text-red-500',
-    }
-  }
-  const statusDisplay = getStatusDisplay()
-
   return (
     <>
       {/* Logo */}
@@ -117,51 +90,6 @@ function SidebarContent({
           </div>
           <span className="font-semibold text-slate-900 text-sm">Absstem TenderHub</span>
         </div>
-      </div>
-
-      {/* Start Execution button */}
-      <div className="px-3 pt-4 pb-2">
-        <button
-          onClick={handleTrigger}
-          disabled={isBusy}
-          title="Execution may take time"
-          className={clsx(
-            'w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
-            isBusy
-              ? 'bg-blue-100 text-blue-500 cursor-not-allowed'
-              : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow'
-          )}
-        >
-          {isBusy
-            ? <><Loader2 size={13} className="animate-spin" style={lufgaRegularStyle} /> Running...</>
-            : <><Play size={13} /> Start Execution</>
-          }
-        </button>
-
-        {(isRunning || pendingStart) && (
-          <button
-            onClick={stop}
-            className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-100 transition-colors"
-          >
-            <Square size={13} fill="currentColor" className="text-red-600" />
-            Stop Execution
-          </button>
-        )}
-
-        {status?.pipeline?.last_result && (
-          <div className={clsx('flex items-center gap-1.5 mt-2 px-1 text-[11px]', statusDisplay.color)}>
-            {statusDisplay.icon === 'check' && <CheckCircle2 size={10} />}
-            {statusDisplay.icon === 'alert' && runStatus === 'interrupted' && <AlertTriangle size={10} />}
-            {statusDisplay.icon === 'alert' && runStatus !== 'interrupted' && <AlertCircle size={10} />}
-            {statusDisplay.label}
-          </div>
-        )}
-
-        {error && (
-          <p className="mt-1.5 px-1 text-[11px] text-red-500 leading-tight">
-            {error.includes('already running') ? 'Already running' : 'API offline — start server'}
-          </p>
-        )}
       </div>
 
       {/* Nav links */}

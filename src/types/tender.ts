@@ -78,10 +78,15 @@ export interface TenderFilters {
 // ─── Dashboard stats ─────────────────────────────────────────
 export interface DashboardStats {
   total_tenders: number
+  eproc_total: number
+  gem_total: number
   new_today: number
+  eproc_today: number
+  gem_today: number
   sites_monitored: number
   last_run_at: string | null
   last_run_status: RunStatus | null
   tenders_by_site: { site: string; count: number }[]
   tenders_by_keyword: { keyword: string; count: number }[]
+  gem_keywords: { keyword: string; count: number }[]
 }

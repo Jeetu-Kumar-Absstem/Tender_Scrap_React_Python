@@ -3,9 +3,47 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'Lufga';
+  src: url('/fonts/Lufga-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Lufga';
+  src: url('/fonts/Lufga-Regular.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Lufga';
+  src: url('/fonts/Lufga-SemiBold.otf') format('opentype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Lufga';
+  src: url('/fonts/Lufga-SemiBold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 @layer base {
-  * { box-sizing: border-box; }
-  body { @apply bg-slate-50 text-slate-900 font-sans antialiased; }
+  * {
+    box-sizing: border-box;
+    font-family: 'Lufga', 'DM Sans', sans-serif;
+  }
+  html, body {
+    font-family: 'Lufga', 'DM Sans', sans-serif;
+    @apply bg-slate-50 text-slate-900 font-sans antialiased;
+  }
 }
 
 @layer utilities {

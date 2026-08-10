@@ -4,7 +4,7 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['DM Sans', 'system-ui', 'sans-serif'],
+        sans: ['Lufga', 'DM Sans', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
       },
     },

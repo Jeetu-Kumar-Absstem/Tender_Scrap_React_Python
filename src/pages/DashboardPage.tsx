@@ -139,7 +139,7 @@ export default function DashboardPage() {
           <div className="space-y-2">
             {stats?.tenders_by_keyword?.slice(0, 5).map(({ keyword, count }: { keyword: string; count: number }) => (
               <div key={keyword} className="flex items-center gap-2">
-                <span className="text-xs font-mono bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded flex-shrink-0 truncate max-w-[140px]">{keyword}</span>
+                <span className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded flex-shrink-0 truncate max-w-[140px]">{keyword}</span>
                 <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                   <div className="h-full bg-blue-600 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (count / Math.max(eprocTotal, 1)) * 300)}%` }} />
                 </div>
@@ -161,7 +161,7 @@ export default function DashboardPage() {
           <div className="space-y-2">
             {stats?.gem_keywords?.slice(0, 5).map(({ keyword, count }: { keyword: string; count: number }) => (
               <div key={keyword} className="flex items-center gap-2">
-                <span className="text-xs font-mono bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded flex-shrink-0 truncate max-w-[140px]">{keyword}</span>
+                <span className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded flex-shrink-0 truncate max-w-[140px]">{keyword}</span>
                 <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                   <div className="h-full bg-indigo-600 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (count / Math.max(gemTotal, 1)) * 300)}%` }} />
                 </div>

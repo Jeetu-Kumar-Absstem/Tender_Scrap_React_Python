@@ -1,6 +1,6 @@
 // src/components/dashboard/Layout.tsx
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, FileSearch, Activity, X, ChevronUp, AlertTriangle, Terminal, ChevronDown, Trash2, LogOut, Hospital, Globe } from 'lucide-react'
+import { LayoutDashboard, FileSearch, Activity, X, ChevronUp, AlertTriangle, Terminal, ChevronDown, Trash2, LogOut, Hospital, Globe, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { usePipeline } from '../../hooks/usePipeline'
 import { useLogs } from '../../hooks/useLogs'
 import { supabase } from '../../lib/supabase'
@@ -75,6 +75,7 @@ function LogPanel({ onClose }: { onClose: () => void }) {
 // ─── Sidebar inner content ────────────────────────────────────
 function SidebarContent({
   isRunning,
+  isCollapsed, setIsCollapsed,
   isDisclaimerMinimized, setIsDisclaimerMinimized,
   isDisclaimerVisible, handleDismiss,
   showDisclaimer,
@@ -82,39 +83,60 @@ function SidebarContent({
 }: any) {
   return (
     <>
-      {/* Logo */}
-      <div className="px-5 py-5 border-b border-slate-100">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Activity size={14} className="text-white" />
+      {/* Logo & Toggle Header */}
+      <div className={clsx(
+        "border-b border-slate-100/80 flex items-center transition-all duration-300",
+        isCollapsed ? "px-2 py-4 justify-between" : "px-4 py-4 justify-between"
+      )}>
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm">
+            <Activity size={16} className="text-white" />
           </div>
-          <span className="font-semibold text-slate-900 text-sm">Absstem TenderHub</span>
+          {!isCollapsed && (
+            <span className="font-semibold text-slate-900 text-sm truncate" style={lufgaSemiboldStyle}>
+              Absstem TenderHub
+            </span>
+          )}
         </div>
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+          title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+        >
+          {isCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+        </button>
       </div>
 
       {/* Nav links */}
-      <nav className="flex-1 px-3 py-2 space-y-0.5">
+      <nav className="flex-1 px-3 py-3 space-y-1">
         {nav.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
+            title={isCollapsed ? label : undefined}
             className={({ isActive }) =>
-              `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+              `flex items-center rounded-lg transition-all ${
+                isCollapsed ? 'justify-center px-0 py-2.5' : 'gap-2.5 px-3 py-2 text-sm'
+              } ${
                 isActive
-                  ? 'bg-blue-50 text-blue-700 font-medium'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  ? 'bg-blue-50 text-blue-700 font-semibold'
+                  : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'
               }`
             }
           >
-            <Icon size={15} />
-            {label}
+            <Icon size={isCollapsed ? 18 : 15} className="flex-shrink-0" />
+            {!isCollapsed && (
+              <span className="truncate" style={lufgaRegularStyle}>
+                {label}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>
 
       {/* Bottom section */}
       <div className="mt-auto">
-        {isDisclaimerVisible && (
+        {!isCollapsed && isDisclaimerVisible && (
           <div className="p-3 border-t border-slate-100" style={lufgaRegularStyle}>
             {isDisclaimerMinimized ? (
               <button
@@ -155,7 +177,7 @@ function SidebarContent({
           </div>
         )}
 
-        {!isDisclaimerVisible && (
+        {!isCollapsed && !isDisclaimerVisible && (
           <div className="px-3 pt-2 border-t border-slate-100">
             <button
               onClick={showDisclaimer}
@@ -170,19 +192,21 @@ function SidebarContent({
         <div className="px-3 py-2 border-t border-slate-100">
           <button
             onClick={() => setLogsOpen((v: boolean) => !v)}
+            title={isCollapsed ? "Toggle Pipeline Logs" : undefined}
             className={clsx(
-              'w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all',
+              'w-full flex items-center justify-between gap-2 py-2 rounded-lg text-xs font-medium transition-all',
+              isCollapsed ? 'justify-center px-0' : 'px-3',
               logsOpen
                 ? 'bg-slate-800 text-emerald-400'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
             )}
           >
             <div className="flex items-center gap-2">
-              <Terminal size={12} />
-              <span>Logs</span>
+              <Terminal size={isCollapsed ? 15 : 12} />
+              {!isCollapsed && <span>Logs</span>}
               {isRunning && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
             </div>
-            {logsOpen ? <ChevronDown size={11} /> : <ChevronUp size={11} />}
+            {!isCollapsed && (logsOpen ? <ChevronDown size={11} /> : <ChevronUp size={11} />)}
           </button>
         </div>
       </div>
@@ -196,6 +220,13 @@ export default function Layout() {
   const [isDisclaimerMinimized, setIsDisclaimerMinimized] = useState(false)
   const [isDisclaimerVisible,   setIsDisclaimerVisible]   = useState(true)
   const [logsOpen, setLogsOpen] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem('tenderpulse_sidebar_collapsed') === 'true'
+  })
+
+  useEffect(() => {
+    localStorage.setItem('tenderpulse_sidebar_collapsed', String(isCollapsed))
+  }, [isCollapsed])
 
   useEffect(() => {
     const dismissed = localStorage.getItem('tenderpulse_disclaimer_dismissed')
@@ -218,6 +249,7 @@ export default function Layout() {
 
   const sharedProps = {
     isRunning, loading, statusLoaded, error, status, trigger, stop,
+    isCollapsed, setIsCollapsed,
     isDisclaimerMinimized, setIsDisclaimerMinimized,
     isDisclaimerVisible, handleDismiss, showDisclaimer,
     logsOpen, setLogsOpen,
@@ -227,8 +259,8 @@ export default function Layout() {
     <div className="flex h-screen overflow-hidden bg-slate-50">
       {/* Sidebar */}
       <aside className={clsx(
-        'flex-shrink-0 bg-white border-r border-slate-200 flex flex-col transition-all duration-300',
-        logsOpen ? 'w-80' : 'w-56'
+        'flex-shrink-0 glass-card border-r border-slate-200/80 flex flex-col transition-all duration-300 ease-in-out',
+        logsOpen ? 'w-80' : isCollapsed ? 'w-16' : 'w-60'
       )}>
         <div className="flex flex-col flex-1 overflow-hidden">
           <div className="flex flex-col flex-1 overflow-y-auto">

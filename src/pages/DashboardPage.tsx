@@ -1,44 +1,48 @@
-import { useDashboardStats, useScrapeRuns, useTodaysTenders } from '../hooks/useTenders'
+import { useDashboardStats, useTodaysTenders } from '../hooks/useTenders'
 import { formatDistanceToNow, parseISO } from 'date-fns'
-import { CheckCircle, XCircle, Clock, TrendingUp, Globe, FileText, Mail } from 'lucide-react'
-import type { RunStatus } from '../types/tender'
+import { TrendingUp, Globe, FileText, Clock, Shield, ArrowRight } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import TenderCard from '../components/tenders/TenderCard'
-
 
 const lufgaRegularStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 400 } as const;
 const lufgaSemiboldStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 600 } as const;
+
 function StatCard({ label, value, sub, icon: Icon, color }: {
   label: string; value: string | number; sub?: string; icon: any; color: string
 }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5">
+    <motion.div
+      whileHover={{ y: -3 }}
+      transition={{ duration: 0.2 }}
+      className="glass-card glass-card-hover rounded-xl p-5"
+    >
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">{label}</p>
           <p className="text-2xl font-semibold text-slate-900 mt-1">{value}</p>
           {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
         </div>
-        <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${color}`}>
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shadow-sm ${color}`}>
           <Icon size={16} className="text-white" />
         </div>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
-const runStatusBadge: Record<RunStatus, { label: string; cls: string; icon: any }> = {
-  running:   { label: 'Running',   cls: 'bg-yellow-50 text-yellow-700 border-yellow-200', icon: Clock },
-  completed: { label: 'Completed', cls: 'bg-green-50  text-green-700  border-green-200',  icon: CheckCircle },
-  failed:    { label: 'Failed',    cls: 'bg-red-50    text-red-700    border-red-200',    icon: XCircle },
-}
-
 export default function DashboardPage() {
+  const navigate = useNavigate()
   const { data: stats }  = useDashboardStats()
-  const { data: runs }   = useScrapeRuns(5)
   const { data: todays } = useTodaysTenders()
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="p-6 max-w-6xl mx-auto space-y-6"
+    >
       <div>
         <h1 className="text-xl font-semibold text-slate-900" style={lufgaSemiboldStyle}>Dashboard</h1>
         <p className="text-sm text-slate-500 mt-0.5" style={lufgaRegularStyle}>
@@ -60,39 +64,34 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
-        {/* Recent runs */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h2 className="text-sm font-semibold text-slate-700 mb-3" style={lufgaSemiboldStyle}>Recent Runs</h2>
-          {!runs?.length && <p className="text-sm text-slate-400">No runs yet.</p>}
-          <div className="space-y-2">
-            {runs?.map(run => {
-              const badge = runStatusBadge[run.status] ?? runStatusBadge.completed
-              const Icon  = badge.icon
-              return (
-                <div key={run.id} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
-                  <div>
-                    <div className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded border ${badge.cls}`}>
-                      <Icon size={10} />{badge.label}
-                    </div>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      {formatDistanceToNow(parseISO(run.started_at), { addSuffix: true })}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-slate-900">{run.new_count} new</p>
-                    <div className="flex items-center gap-1 justify-end">
-                      {run.email_sent && <Mail size={10} className="text-blue-400" />}
-                      <p className="text-xs text-slate-400">{run.sites_ok}/{run.sites_total} ok</p>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
+        {/* Quick Actions Card */}
+        <motion.div
+          whileHover={{ y: -2 }}
+          transition={{ duration: 0.2 }}
+          className="glass-card rounded-xl p-5"
+        >
+          <h2 className="text-sm font-semibold text-slate-700 mb-3" style={lufgaSemiboldStyle}>
+            Quick Actions
+          </h2>
+          <div className="space-y-2.5">
+            <motion.button
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => navigate('/more-portals', { state: { portal: 'gem' } })}
+              className="w-full flex items-center justify-between px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-all shadow-sm hover:shadow"
+              style={lufgaSemiboldStyle}
+            >
+              <span className="flex items-center gap-2">
+                <Shield size={15} />
+                Go to GeM Portal
+              </span>
+              <ArrowRight size={14} />
+            </motion.button>
           </div>
-        </div>
+        </motion.div>
 
         {/* Top keywords */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <div className="glass-card rounded-xl p-5">
           <h2 className="text-sm font-semibold text-slate-700 mb-3" style={lufgaSemiboldStyle}>
             Top Keywords
           </h2>
@@ -102,7 +101,7 @@ export default function DashboardPage() {
               <div key={keyword} className="flex items-center gap-2">
                 <span className="text-xs font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded flex-shrink-0">{keyword}</span>
                 <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min(100, (count / Math.max(stats.total_tenders, 1)) * 500)}%` }} />
+                  <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${Math.min(100, (count / Math.max(stats.total_tenders, 1)) * 500)}%` }} />
                 </div>
                 <span className="text-xs text-slate-500 flex-shrink-0">{count}</span>
               </div>
@@ -111,7 +110,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Top sites */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <div className="glass-card rounded-xl p-5">
           <h2 className="text-sm font-semibold text-slate-700 mb-3" style={lufgaSemiboldStyle}>
             Top Sources
           </h2>
@@ -137,6 +136,6 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   )
 }

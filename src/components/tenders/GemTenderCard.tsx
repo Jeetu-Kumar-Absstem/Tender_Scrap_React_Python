@@ -1,5 +1,6 @@
 // src/components/tenders/GemTenderCard.tsx
 import { useState, useRef, useEffect } from 'react'
+import { motion } from 'framer-motion'
 import { ExternalLink, Calendar, MapPin, Building2, Tag, MoreVertical, CheckCircle2, Star, Trash2, AlertTriangle, X, Loader2, Clock } from 'lucide-react'
 import { format, parseISO, isAfter, startOfDay, isToday } from 'date-fns'
 import { clsx } from 'clsx'
@@ -184,12 +185,19 @@ export default function GemTenderCard({ tender }: Props) {
   }
 
   return (
-    <div className={clsx(
-      'bg-white rounded-xl border p-4 transition-all relative',
-      isDone && 'opacity-60 border-slate-200',
-      isStarred && 'border-amber-200 bg-amber-50/30',
-      !isDone && !isStarred && 'border-slate-200 hover:border-indigo-200 hover:shadow-sm',
-    )}>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      whileHover={{ y: -2 }}
+      transition={{ duration: 0.2 }}
+      className={clsx(
+        'glass-card rounded-xl p-4 transition-all relative',
+        isDone && 'opacity-60 border-slate-200 bg-slate-50/50',
+        isStarred && 'border-amber-200/80 bg-amber-50/40 shadow-amber-50/20',
+        !isDone && !isStarred && 'glass-card-hover',
+      )}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <h3 className={clsx(
@@ -296,6 +304,6 @@ export default function GemTenderCard({ tender }: Props) {
           loading={archiveAndDelete.isPending}
         />
       )}
-    </div>
+    </motion.div>
   )
 }

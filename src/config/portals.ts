@@ -16,18 +16,6 @@ export interface PortalConfig {
 
 export const PORTALS: PortalConfig[] = [
   {
-    id: 'tender18',
-    name: 'Tender18.com',
-    icon: Globe,
-    color: 'blue',
-    description: 'PSA plant tenders from Tender18.com',
-    tableName: 'tender18_tenders',
-    enabled: true,
-    comingSoon: false,
-    scraperEndpoint: '/api/run-type-d',
-    statusEndpoint: '/api/status-type-d',
-  },
-  {
     id: 'gem',
     name: 'GeM.gov',
     icon: Shield,

@@ -1,6 +1,6 @@
 // src/pages/MorePortalsPage.tsx
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Play, Square, Loader2, CheckCircle2, AlertCircle, Globe,
   Clock, FileText, TrendingUp, Search, X, Filter, MapPin,
@@ -8,11 +8,10 @@ import {
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { format, parseISO } from 'date-fns'
-import { useTypeD } from '../hooks/useTypeD'
 import { useTypeC } from '../hooks/useTypeC'
-import { useTender18Tenders, type Tender18Tender } from '../hooks/useTender18'
 import { useGemTenders, useGemTodayTenders, type GemTender } from '../hooks/useGemTenders'
-import Tender18Card from '../components/tenders/Tender18Card'
+import { motion, AnimatePresence } from 'framer-motion'
+import { SkeletonGrid } from '../components/ui/SkeletonLoader'
 import GemTenderCard from '../components/tenders/GemTenderCard'
 import PortalTabs from '../components/portals/PortalTabs'
 import ComingSoonCard from '../components/portals/ComingSoonCard'
@@ -28,9 +27,11 @@ const lufgaSemiboldStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 600 
 
 export default function MorePortalsPage() {
   const navigate = useNavigate()
+  const location = useLocation()
 
-  // Portal selection
-  const [activePortalId, setActivePortalId] = useState<string>('tender18')
+  // Portal selection (default to gem or portal passed in state)
+  const initialPortal = (location.state as { portal?: string })?.portal || 'gem'
+  const [activePortalId, setActivePortalId] = useState<string>(initialPortal)
 
   // Get current portal config
   const currentPortal: PortalConfig = getPortalById(activePortalId) || PORTALS[0]
@@ -38,32 +39,15 @@ export default function MorePortalsPage() {
   const isGem = activePortalId === 'gem'
 
   // Portal-specific hooks
-  const typeD = useTypeD()
   const typeC = useTypeC()
-  const { data: tender18Tenders = [], refetch: refetchTender18, isLoading: isLoadingTender18 } = useTender18Tenders()
   const { data: gemTenders = [], refetch: refetchGem, isLoading: isLoadingGem } = useGemTenders()
   const { data: gemTodayTenders = [], refetch: refetchGemToday, isLoading: isLoadingGemToday } = useGemTodayTenders()
   const [gemView, setGemView] = useState<'all' | 'today'>('all')
 
-  // Determine which hook to use based on active portal
-  const isTender18 = activePortalId === 'tender18'
-
-  const { isRunning, loading, error, status, trigger, stop } = isTender18 ? typeD : typeC
-  const tenders = isTender18
-    ? tender18Tenders
-    : isGem && gemView === 'today'
-    ? gemTodayTenders
-    : gemTenders
-  const refetch = isTender18
-    ? refetchTender18
-    : isGem && gemView === 'today'
-    ? refetchGemToday
-    : refetchGem
-  const isLoading = isTender18
-    ? isLoadingTender18
-    : isGem && gemView === 'today'
-    ? isLoadingGemToday
-    : isLoadingGem
+  const { isRunning, loading, error, status, trigger, stop } = typeC
+  const tenders = isGem && gemView === 'today' ? gemTodayTenders : gemTenders
+  const refetch = isGem && gemView === 'today' ? refetchGemToday : refetchGem
+  const isLoading = isGem && gemView === 'today' ? isLoadingGemToday : isLoadingGem
 
   // Toggle for showing/hiding filters
   const [showFilters, setShowFilters] = useState<boolean>(false)
@@ -191,7 +175,12 @@ export default function MorePortalsPage() {
   // If coming soon, show the coming soon card
   if (isComingSoon) {
     return (
-      <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="p-6 max-w-6xl mx-auto space-y-6"
+      >
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-slate-900" style={lufgaSemiboldStyle}>
             More Portals
@@ -202,12 +191,17 @@ export default function MorePortalsPage() {
         <PortalTabs activePortal={activePortalId} onPortalChange={handlePortalChange} />
 
         <ComingSoonCard portal={currentPortal} />
-      </div>
+      </motion.div>
     )
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="p-6 max-w-6xl mx-auto space-y-6"
+    >
       {/* Page header */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-slate-900" style={lufgaSemiboldStyle}>
@@ -228,7 +222,7 @@ export default function MorePortalsPage() {
             className={clsx(
               'px-4 py-2 rounded-full text-sm font-medium transition-all',
               gemView === 'all'
-                ? 'bg-indigo-600 text-white'
+                ? 'bg-indigo-600 text-white shadow-sm'
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             )}
           >
@@ -240,17 +234,17 @@ export default function MorePortalsPage() {
             className={clsx(
               'px-4 py-2 rounded-full text-sm font-medium transition-all',
               gemView === 'today'
-                ? 'bg-indigo-600 text-white'
+                ? 'bg-indigo-600 text-white shadow-sm'
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             )}
           >
-            Today\'s GeM
+            Today's GeM
           </button>
         </div>
       )}
 
       {/* Scraper Control Card */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
+      <div className="glass-card rounded-xl p-6 relative overflow-hidden">
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-2">
@@ -258,7 +252,7 @@ export default function MorePortalsPage() {
               <h2 className="text-sm font-semibold text-slate-900" style={lufgaSemiboldStyle}>
                 {currentPortal.name} Scraper
               </h2>
-              <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+              <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
                 {tenders.length} in DB
               </span>
             </div>
@@ -294,7 +288,7 @@ export default function MorePortalsPage() {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0 relative">
             <button
               onClick={handleRefresh}
               disabled={isLoading}
@@ -305,19 +299,24 @@ export default function MorePortalsPage() {
               Refresh
             </button>
             {isRunning ? (
-              <button
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={stop}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-sm font-medium"
+                className="relative flex items-center gap-2 px-4 py-2 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition-colors text-sm font-medium"
               >
+                <span className="radar-pulse-ring pointer-events-none" />
                 <Square size={14} fill="currentColor" />
                 Stop
-              </button>
+              </motion.button>
             ) : (
-              <button
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={handleRunScraper}
                 disabled={loading}
                 className={clsx(
-                  'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
+                  'relative flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
                   loading
                     ? 'bg-blue-100 text-blue-500 cursor-not-allowed'
                     : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow'
@@ -332,7 +331,7 @@ export default function MorePortalsPage() {
                     <Play size={14} /> Run Scraper
                   </>
                 )}
-              </button>
+              </motion.button>
             )}
           </div>
         </div>
@@ -412,7 +411,7 @@ export default function MorePortalsPage() {
 
       {/* Filters Panel - Conditionally Rendered */}
       {showFilters && (
-        <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 animate-in slide-in-from-top-2 duration-200">
+        <div className="glass-card rounded-xl p-4 space-y-3 animate-in slide-in-from-top-2 duration-200">
           <div className="flex flex-wrap items-center gap-3">
             {/* Keyword Filter */}
             <div className="flex items-center gap-1.5">
@@ -556,14 +555,9 @@ export default function MorePortalsPage() {
           </h2>
         </div>
         {isLoading ? (
-          <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
-            <Loader2 size={32} className="text-blue-500 animate-spin mx-auto mb-3" />
-            <p className="text-sm text-slate-500" style={lufgaRegularStyle}>
-              Loading tenders...
-            </p>
-          </div>
+          <SkeletonGrid count={3} />
         ) : filteredTenders.length === 0 ? (
-          <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
+          <div className="glass-card rounded-xl p-8 text-center">
             <Globe size={32} className="text-slate-300 mx-auto mb-3" />
             <p className="text-sm text-slate-500" style={lufgaRegularStyle}>
               {tenders.length === 0
@@ -577,18 +571,16 @@ export default function MorePortalsPage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {filteredTenders.map((tender: any) => (
-              isTender18 ? (
-                <Tender18Card key={tender.id} tender={tender as Tender18Tender} />
-              ) : (
+          <AnimatePresence mode="popLayout">
+            <div className="space-y-3">
+              {filteredTenders.map((tender: any) => (
                 <GemTenderCard key={tender.id} tender={tender as GemTender} />
-              )
-            ))}
-          </div>
+              ))}
+            </div>
+          </AnimatePresence>
         )}
       </div>
-    </div>
+    </motion.div>
   )
 }
 

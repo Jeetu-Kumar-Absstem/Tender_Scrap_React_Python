@@ -16,9 +16,18 @@ import os
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
+
+# ─── Force UTF-8 stdout/stderr FIRST — before any emoji prints ────────────
+# Needed when spawned by Node.js on Windows (default encoding is cp1252).
+if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+if sys.stderr.encoding and sys.stderr.encoding.lower() != 'utf-8':
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+os.environ.setdefault("PYTHONUTF8", "1")
+# ──────────────────────────────────────────────────────────────────────────
 
 import requests
 from playwright.async_api import async_playwright
@@ -49,11 +58,6 @@ except Exception as _e:
     _EMAIL_ENABLED = False
     def send_digest(*args, **kwargs):
         return False
-
-# ─── Force UTF-8 Encoding ──────────────────────────────────────────────
-
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 # ─── PDF Library Detection ──────────────────────────────────────────────
 
@@ -109,166 +113,6 @@ except ImportError:
 
 
 
-# KEYWORD_CATEGORIES = {
-#     "psa": [
-#         "psa plant",
-#         "psa nitrogen plant",
-#         "psa oxygen plant",
-#         "psa amc",
-#         "psa cmc",
-#         "psa plant cmc",
-#         "operation and maintenance of psa plant",
-#         "sitc of psa oxygen plant",
-#         "erection and commissioning psa",
-#         "supply installation commissioning psa",
-#         "design supply installation testing commissioning psa",
-#         "retrofitting upgradation of oxygen plant",
-#         "refurbishment of psa plant",
-#         "compressor overhaul psa plant",
-#         "psa plant repair maintenance installation",
-#         "camc psa hospital",
-#         "sitc oxygen generation plant",
-#     ],
-#     "oxygen": [
-#         "oxygen plant",
-#         "oxygen psa plant",
-#         "oxygen gas generation",
-#         "oxygen gas generator",
-#         "psa oxygen",
-#          "oxygen gas plant",
-#         "oxygen generation plant",
-#         "On-site oxygen generation system",
-#         "Oxygen concentrator plant",
-#         "District hospital oxygen plant",
-#         "Medical college oxygen plant",
-#         "on-site nitrogen generation system",
-#         "nitrogen generation plant",
-#         "oxygen generation system for hospital",
-#         "replacement of oxygen plant",
-#         "oxygen plant comprehensive maintenance",
-#     ],
-#     "nitrogen": [
-#         "nitrogen gas plant",
-#         "nitrogen psa plant",
-#         "nitrogen gas generation",
-#         "nitrogen gas generator",
-#         "psa nitrogen",
-#         "nitrogen generation plant",
-#         "On-site nitrogen generation system",
-#         "glass industry nitrogen plant",
-#         "pharma industry nitrogen plant",
-#         "food packaging nitrogen plant",
-#         "nitrogen plant annual maintenance",
-#     ],
-#     "comprehensive maintenance contract": [
-#         "comprehensive maintenance contract psa plant",
-#         "comprehensive maintenance contract oxygen plant",
-#         "comprehensive maintenance contract nitrogen plant",
-#         "annual maintenance contract psa plant",
-#         "annual maintenance contract oxygen plant",
-#         "annual maintenance contract nitrogen plant",
-#         "Comprehensive annual maintenance contract of psa oxygen generation plant",
-#         "Comprehensive annual maintenance contract psa plant",
-#         "Comprehensive annual maintenance contract nitrogen plant",
-#         "preventive maintenance oxygen generator",
-#         "oxygen plant repair maintenance",
-#         "nitrogen plant repair maintenance",
-#         "amc psa oxygen plant",
-#         "cmc psa oxygen plant",
-#         "amc psa nitrogen plant",
-#         "cmc psa nitrogen plant",
-#         "breakdown maintenance oxygen plant",
-#         "breakdown maintenance nitrogen plant",
-#         "breakdown maintenance psa plant",
-#         "amc psa plant",
-#         "cmc psa plant",
-#         "customized amc/cmc for pre-owned products - psa plant",
-#         "customized amc/cmc for pre-owned products - oxygen psa plant",
-#         "customized amc/cmc for pre-owned products - nitrogen psa plant",
-#         "customized amc/cmc for pre-owned products - nitrogen gas plant",
-#         "customized amc/cmc for pre-owned products - psa oxygen generation plant",
-#         "customized amc/cmc for pre-owned products - comprehensive annual maintenance contract of psa oxygen generation plant",
-#         "amc tender",
-#         "preventive maintenance contract",
-#         "comprehensive amc oxygen plant",
-#         "non-comprehensive amc psa plant",
-    #     "annual rate contract psa plant",
-    #         "annual rate contract oxygen plant",
-    #         "annual rate contract nitrogen plant",
-    #     "spare parts supply amc",
-    #     "warranty and post-warranty maintenance",
-    #     "repair and maintenance of plant",
-    #     "facility management services oxygen",
-    #     "medical oxygen operation and maintenance tender",
-    #     "psa oxygen plant amc tender",
-    #     "psa nitrogen plant amc tender",
-    #     "o&m psa plant",
-    # ],
-#     "Pressure Swing Adsorption plant": [
-#         "Pressure Swing Adsorption plant",
-#         "Pressure Swing Adsorption oxygen generator",
-#         "Pressure Swing Adsorption nitrogen generator",
-#         "zeolite molecular sieve",
-#     ],
-#     "medical oxygen plant": [
-#         "medical oxygen plant",
-#         "medical oxygen generator",
-#         "medical oxygen generation plant",
-#         "medical oxygen generation system",
-#         "medical gas pipeline system",
-#         "oxygen generation system for hospital",
-#         "liquid medical oxygen",
-#     ],
-#     "industrial oxygen": [
-#         "industrial oxygen generator",
-#         "industrial nitrogen generator",
-#         "psu industrial oxygen plant",
-#         "steel plant oxygen plant",
-#         "industrial oxygen plant",
-#         "industrial nitrogen plant",
-#         # // we can add industrial oxygen plant and industrial nitrogen plant as well
-#     ],
-#     "Molecular sieve oxygen plant": [
-#         "Molecular sieve oxygen plant",
-#         "Molecular sieve refilling",
-#         "zeolite molecular sieve plant",
-#         "zeolite sieve replacement",
-#         "air dryer maintenance",
-#     ],
-#     "Zeolite molecular sieve plant": [
-#         "Zeolite molecular sieve plant",
-#         "Zeolite/sieve replacement",
-#         "Carbon molecular sieve nitrogen plant",
-#     ],
-#     "Carbon molecular sieve nitrogen plant": [
-#         "Carbon molecular sieve nitrogen plant",
-#     ],
-#     "camc": [
-#         "camc oxygen plant",
-#         "camc nitrogen plant",
-#         "Comprehensive Annual Maintenance Contract psa plant",
-#     ],
-#     "government hospital": [
-#         "government hospital psa plant",
-#         "health department oxygen tender",
-#         "national health mission oxygen plant",
-#         "state medical services corporation",
-#         "cghs oxygen plant",
-#         "esic hospital oxygen plant",
-#         "railway hospital oxygen plant",
-#         "defence hospital oxygen plant",
-#         "pm cares oxygen plant",
-#     ],
-#     "sitc": [
-#         "turnkey supply installation testing commissioning",
-#         "sitc of psa oxygen plant",
-#         "sitc oxygen generation plant",
-#         "design supply installation testing commissioning psa",
-#         "erection and commissioning psa",
-#         "supply installation commissioning psa",
-#     ],
-# }
-
 KEYWORD_CATEGORIES = {
     "psa": [
         "psa plant",
@@ -289,7 +133,167 @@ KEYWORD_CATEGORIES = {
         "camc psa hospital",
         "sitc oxygen generation plant",
     ],
+    "oxygen": [
+        "oxygen plant",
+        "oxygen psa plant",
+        "oxygen gas generation",
+        "oxygen gas generator",
+        "psa oxygen",
+         "oxygen gas plant",
+        "oxygen generation plant",
+        "On-site oxygen generation system",
+        "Oxygen concentrator plant",
+        "District hospital oxygen plant",
+        "Medical college oxygen plant",
+        "on-site nitrogen generation system",
+        "nitrogen generation plant",
+        "oxygen generation system for hospital",
+        "replacement of oxygen plant",
+        "oxygen plant comprehensive maintenance",
+    ],
+    "nitrogen": [
+        "nitrogen gas plant",
+        "nitrogen psa plant",
+        "nitrogen gas generation",
+        "nitrogen gas generator",
+        "psa nitrogen",
+        "nitrogen generation plant",
+        "On-site nitrogen generation system",
+        "glass industry nitrogen plant",
+        "pharma industry nitrogen plant",
+        "food packaging nitrogen plant",
+        "nitrogen plant annual maintenance",
+    ],
+    "comprehensive maintenance contract": [
+        "comprehensive maintenance contract psa plant",
+        "comprehensive maintenance contract oxygen plant",
+        "comprehensive maintenance contract nitrogen plant",
+        "annual maintenance contract psa plant",
+        "annual maintenance contract oxygen plant",
+        "annual maintenance contract nitrogen plant",
+        "Comprehensive annual maintenance contract of psa oxygen generation plant",
+        "Comprehensive annual maintenance contract psa plant",
+        "Comprehensive annual maintenance contract nitrogen plant",
+        "preventive maintenance oxygen generator",
+        "oxygen plant repair maintenance",
+        "nitrogen plant repair maintenance",
+        "amc psa oxygen plant",
+        "cmc psa oxygen plant",
+        "amc psa nitrogen plant",
+        "cmc psa nitrogen plant",
+        "breakdown maintenance oxygen plant",
+        "breakdown maintenance nitrogen plant",
+        "breakdown maintenance psa plant",
+        "amc psa plant",
+        "cmc psa plant",
+        "customized amc/cmc for pre-owned products - psa plant",
+        "customized amc/cmc for pre-owned products - oxygen psa plant",
+        "customized amc/cmc for pre-owned products - nitrogen psa plant",
+        "customized amc/cmc for pre-owned products - nitrogen gas plant",
+        "customized amc/cmc for pre-owned products - psa oxygen generation plant",
+        "customized amc/cmc for pre-owned products - comprehensive annual maintenance contract of psa oxygen generation plant",
+        "amc tender",
+        "preventive maintenance contract",
+        "comprehensive amc oxygen plant",
+        "non-comprehensive amc psa plant",
+        "annual rate contract psa plant",
+            "annual rate contract oxygen plant",
+            "annual rate contract nitrogen plant",
+        "spare parts supply amc",
+        "warranty and post-warranty maintenance",
+        "repair and maintenance of plant",
+        "facility management services oxygen",
+        "medical oxygen operation and maintenance tender",
+        "psa oxygen plant amc tender",
+        "psa nitrogen plant amc tender",
+        "o&m psa plant",
+    ],
+    "Pressure Swing Adsorption plant": [
+        "Pressure Swing Adsorption plant",
+        "Pressure Swing Adsorption oxygen generator",
+        "Pressure Swing Adsorption nitrogen generator",
+        "zeolite molecular sieve",
+    ],
+    "medical oxygen plant": [
+        "medical oxygen plant",
+        "medical oxygen generator",
+        "medical oxygen generation plant",
+        "medical oxygen generation system",
+        "medical gas pipeline system",
+        "oxygen generation system for hospital",
+        "liquid medical oxygen",  # shall we remove this keyword
+    ],
+    "industrial oxygen": [
+        "industrial oxygen generator",
+        "industrial nitrogen generator",
+        "psu industrial oxygen plant",
+        "steel plant oxygen plant",
+        "industrial oxygen plant",
+        "industrial nitrogen plant",
+        # // we can add industrial oxygen plant and industrial nitrogen plant as well
+    ],
+    "Molecular sieve oxygen plant": [
+        "Molecular sieve oxygen plant",
+        "Molecular sieve refilling",
+        "zeolite molecular sieve plant",
+        "zeolite sieve replacement",
+        "air dryer maintenance",
+    ],
+    "Zeolite molecular sieve plant": [
+        "Zeolite molecular sieve plant",
+        "Zeolite/sieve replacement",
+        "Carbon molecular sieve nitrogen plant",
+    ],
+    "Carbon molecular sieve nitrogen plant": [
+        "Carbon molecular sieve nitrogen plant",
+    ],
+    "camc": [
+        "camc oxygen plant",
+        "camc nitrogen plant",
+        "Comprehensive Annual Maintenance Contract psa plant",
+    ],
+    "government hospital": [
+        "government hospital psa plant",
+        "health department oxygen tender",
+        "national health mission oxygen plant",
+        "state medical services corporation",
+        "cghs oxygen plant",
+        "esic hospital oxygen plant",
+        "railway hospital oxygen plant",
+        "defence hospital oxygen plant",
+        "pm cares oxygen plant",
+    ],
+    "sitc": [
+        "turnkey supply installation testing commissioning",
+        "sitc of psa oxygen plant",
+        "sitc oxygen generation plant",
+        "design supply installation testing commissioning psa",
+        "erection and commissioning psa",
+        "supply installation commissioning psa",
+    ],
 }
+
+# KEYWORD_CATEGORIES = {
+#     "psa": [
+#         "psa plant",
+#         "psa nitrogen plant",
+#         "psa oxygen plant",
+#         "psa amc",
+#         "psa cmc",
+#         "psa plant cmc",
+#         "operation and maintenance of psa plant",
+#         "sitc of psa oxygen plant",
+#         "erection and commissioning psa",
+#         "supply installation commissioning psa",
+#         "design supply installation testing commissioning psa",
+#         "retrofitting upgradation of oxygen plant",
+#         "refurbishment of psa plant",
+#         "compressor overhaul psa plant",
+#         "psa plant repair maintenance installation",
+#         "camc psa hospital",
+#         "sitc oxygen generation plant",
+#     ],
+# }
 
 EXCLUDE_KEYWORDS = [
     "oem authorization certificate",
@@ -812,11 +816,13 @@ def bulk_insert_today_tenders(tender_list: list, client, existing_refs: set, bat
         "scraped_at",
     }
 
-    # Fetch reference numbers already in today_gem_tenders to avoid duplicates
+    # Fetch reference numbers already in today_gem_tenders to avoid duplicates.
+    # "Today" is defined in IST (Asia/Kolkata, UTC+5:30) — midnight IST = 18:30 prev day UTC.
     try:
-        today_start = datetime.now(timezone.utc).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        ).isoformat()
+        _ist_offset = timedelta(hours=5, minutes=30)
+        _now_ist = datetime.now(timezone.utc) + _ist_offset
+        _ist_midnight_utc = _now_ist.replace(hour=0, minute=0, second=0, microsecond=0) - _ist_offset
+        today_start = _ist_midnight_utc.strftime("%Y-%m-%dT%H:%M:%S+00:00")
         existing_today_res = client.table("today_gem_tenders") \
             .select("reference_number") \
             .gte("scraped_at", today_start) \
@@ -873,27 +879,6 @@ def bulk_insert_today_tenders(tender_list: list, client, existing_refs: set, bat
     return total_inserted
 
 
-def clear_old_today_gem_tenders(client):
-    if client is None:
-        print("[TODAY CLEANUP] No Supabase client — skipping today_gem_tenders cleanup.")
-        return 0
-
-    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    print(f"[TODAY CLEANUP] Removing today_gem_tenders scraped before {today_start}...")
-
-    try:
-        result = client.table("today_gem_tenders") \
-            .delete() \
-            .lt("scraped_at", today_start) \
-            .execute()
-        deleted = len(result.data or [])
-        print(f"[TODAY CLEANUP] Removed {deleted} old today_gem_tenders row(s)")
-        return deleted
-    except Exception as e:
-        print(f"[TODAY CLEANUP] Failed to remove old rows: {e}")
-        return 0
-
-
 def prepare_tender_data(raw_data: dict) -> dict:
     title = raw_data.get('web_category') or raw_data.get('items', '')
     title = clean_title(title)
@@ -929,7 +914,9 @@ def prepare_tender_data(raw_data: dict) -> dict:
         "keywords_matched": [matched_keyword] if matched_keyword else [],
         "matched_category": matched_category,
         "user_status": "active",
-        "scraped_at": datetime.now(timezone.utc).isoformat(),
+        # Explicit +00:00 suffix ensures Postgres treats this as UTC regardless
+        # of whether the column is 'timestamptz' or plain 'timestamp'.
+        "scraped_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00"),
     }
 
 def archive_expired_gem_tenders(client):
@@ -1087,9 +1074,6 @@ async def scrape_gem():
         print("[ERROR] ❌ No Supabase client available!")
         return []
 
-    # Ensure only today's tenders remain in the today_gem_tenders table
-    clear_old_today_gem_tenders(client)
-    
     # ONE QUERY: Load ALL processed references (tracks all scraped PDFs)
     processed_refs = load_processed_reference_numbers(client)
     initial_ref_count = len(processed_refs)

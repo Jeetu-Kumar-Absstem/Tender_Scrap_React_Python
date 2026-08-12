@@ -4,17 +4,21 @@ Daily orchestrator for Type B plus HLL Lifecare plus GeM BidPlus.
 
 Flow:
   1. Create scrape_run record in Supabase
-  2. Launch ONE shared browser
-  3. Run Type B sites concurrently, HLL Lifecare via Type A, and GeM BidPlus via Type C
-  4. Dedup check -> insert only new tenders  (still serial per record, safe for Supabase)
-  5. End of run: if any new tenders -> send Brevo email digest
-  6. Update scrape_run with final stats
-  7. Close shared browser
+  2. Load ALL existing tender signatures into memory (one-time dedup snapshot)
+  3. Launch ONE shared browser
+  4. Run Type B sites concurrently, HLL Lifecare via Type A, and GeM BidPlus via Type C
+  5. Dedup check -> if new: insert to DB immediately + add to in-memory new_tender_rows
+  6. End of run (normal OR Ctrl+C OR crash): if any new_tender_rows -> send Brevo email digest
+  7. Update scrape_run with final stats
+  8. Close shared browser
 
-Optimizations vs original:
-  - One browser launched once, shared across all sites (saves ~35 launch/close cycles)
-  - Sites run in parallel with a semaphore cap of CONCURRENCY (default 5)
-  - asyncio.sleep between sites removed (parallelism makes it irrelevant)
+Email guarantee:
+  - new_tender_rows is built in-memory as tenders are inserted during the run
+  - Email fires in a `finally` block so it always runs:
+      normal completion  -> email sent
+      Ctrl+C / SIGINT    -> email sent
+      unexpected crash   -> email sent
+  - No extra DB round-trip needed for email -- we use the in-memory list
 """
 
 from __future__ import annotations
@@ -109,8 +113,9 @@ async def _scrape_site(
                         )
                         continue
 
-                    # Brand-new tender -- insert it, then mark seen so concurrent
-                    # sites in this same run don't re-insert the same record
+                    # Brand-new tender -- insert to DB immediately,
+                    # mark seen so concurrent sites don't re-insert,
+                    # and add to new_tender_rows for the email digest.
                     inserted_id = insert_tender(record)
                     if inserted_id:
                         seen_signatures.add(sig)
@@ -146,6 +151,32 @@ async def _scrape_site(
             return site, 0, str(exc)
 
 
+def _send_email_digest(new_tender_rows: list, run_id: str) -> bool:
+    """
+    Send email digest if there are new tenders.
+    Called from the finally block so it fires on normal completion,
+    Ctrl+C, or any unexpected crash.
+    Returns True if email was sent successfully.
+    """
+    if not new_tender_rows:
+        print("[EMAIL]  ii  No new tenders -- digest skipped")
+        log.info("pipeline.no_new_tenders")
+        return False
+
+    print(f"[EMAIL]  Sending digest for {len(new_tender_rows)} new tender(s) ...")
+    try:
+        email_sent = send_digest(new_tender_rows, run_id=run_id)
+        if email_sent:
+            print("[EMAIL]  OK Digest sent successfully")
+        else:
+            print("[EMAIL]  !! Digest send failed (check BREVO_* env vars / logs)")
+        return email_sent
+    except Exception as exc:
+        print(f"[EMAIL]  !! Digest send raised exception: {exc}")
+        log.error("email.exception", error=str(exc))
+        return False
+
+
 async def run_pipeline() -> None:
     sites = (
          [s for s in SITES_BY_TYPE[SiteType.A] if s.name == "HLL Lifecare"]
@@ -164,100 +195,120 @@ async def run_pipeline() -> None:
 
     # -- One-time DB fetch: all existing (ref, url_hash) pairs into a set ------
     # Single query replaces per-tender tender_exists() DB calls.
+    # Any tender already in DB will be skipped during this run.
     seen_signatures: set[tuple[str, str]] = fetch_all_seen_signatures()
     print(f"[PIPELINE] Loaded {len(seen_signatures)} existing tender signature(s) from DB")
     log.info("pipeline.signatures_loaded", count=len(seen_signatures))
 
-    # Accumulates dicts for every newly-inserted tender (used for the email digest).
-    # Populated inside _scrape_site so we never re-fetch from the DB just to send mail.
+    # Accumulates dicts for every newly-inserted tender this run.
+    # Used for the email digest -- no extra DB fetch needed.
+    # Populated inside _scrape_site as each tender is inserted.
     new_tender_rows: list[dict] = []
 
-    async with async_playwright() as pw:
-        # -- Launch ONE shared browser for all sites --------------
-        browser = await pw.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-blink-features=AutomationControlled",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-web-security",
-                "--disable-features=IsolateOrigins,site-per-process",
-                "--allow-running-insecure-content",
-                "--disable-site-isolation-trials",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--disable-infobars",
-                "--window-size=1920,1080",
-                "--start-maximized",
-            ],
-        )
-        log.info("pipeline.browser_launched")
-
-        try:
-            sem = asyncio.Semaphore(CONCURRENCY)
-
-            # -- Fire all sites concurrently, capped by semaphore -
-            tasks = [
-                _scrape_site(site, run_id, browser, sem, stats, new_tender_rows, seen_signatures)
-                for site in sites
-            ]
-            results = await asyncio.gather(*tasks, return_exceptions=False)
-
-        finally:
-            await browser.close()
-            log.info("pipeline.browser_closed")
-
-    # -- Tally results (inserts already done inside _scrape_site) -
-    for site, new_count, error in results:
-        if error:
-            stats["sites_error"] += 1
-            stats["errors"][site.name] = error
-        else:
-            stats["sites_ok"] += 1
-
-    # -- Console summary ------------------------------------------
-    print("\n" + "=" * 60)
-    print(f"[PIPELINE] Run complete  run_id={run_id}")
-    print(f"[PIPELINE] Sites OK      : {stats['sites_ok']}")
-    print(f"[PIPELINE] Sites failed  : {stats['sites_error']}")
-    print(f"[PIPELINE] New tenders   : {stats['new_count']}")
-    if stats["errors"]:
-        for site_name, err in stats["errors"].items():
-            print(f"[PIPELINE]   **  {site_name}: {err}")
-    print("=" * 60 + "\n")
-
-    # -- Email digest -- use in-memory list, no extra DB round-trip -
+    # results placeholder so finally block can reference it safely
+    results = []
     email_sent = False
-    if new_tender_rows:
-        print(f"[EMAIL]  Sending digest for {len(new_tender_rows)} new tender(s) ...")
-        email_sent = send_digest(new_tender_rows, run_id=run_id)
-        if email_sent:
-            print("[EMAIL]  OK Digest sent successfully")
-        else:
-            print("[EMAIL]  !! Digest send failed (check BREVO_* env vars / logs)")
-    else:
-        print("[EMAIL]  ii  No new tenders -- digest skipped")
-        log.info("pipeline.no_new_tenders")
+    interrupted = False
 
-    # -- Finalise run ---------------------------------------------
-    finish_run(
-        run_id=run_id,
-        sites_ok=stats["sites_ok"],
-        sites_error=stats["sites_error"],
-        new_count=stats["new_count"],
-        email_sent=email_sent,
-        error_log=stats["errors"] or None,
-        status="failed" if stats["sites_error"] == len(sites) else "completed",
-    )
+    try:
+        async with async_playwright() as pw:
+            # -- Launch ONE shared browser for all sites --------------
+            browser = await pw.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-web-security",
+                    "--disable-features=IsolateOrigins,site-per-process",
+                    "--allow-running-insecure-content",
+                    "--disable-site-isolation-trials",
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    "--disable-infobars",
+                    "--window-size=1920,1080",
+                    "--start-maximized",
+                ],
+            )
+            log.info("pipeline.browser_launched")
 
-    log.info(
-        "pipeline.done",
-        new=stats["new_count"],
-        ok=stats["sites_ok"],
-        errors=stats["sites_error"],
-        email_sent=email_sent,
-    )
+            try:
+                sem = asyncio.Semaphore(CONCURRENCY)
+
+                # -- Fire all sites concurrently, capped by semaphore -
+                tasks = [
+                    _scrape_site(site, run_id, browser, sem, stats, new_tender_rows, seen_signatures)
+                    for site in sites
+                ]
+                results = await asyncio.gather(*tasks, return_exceptions=False)
+
+            finally:
+                await browser.close()
+                log.info("pipeline.browser_closed")
+
+        # -- Tally results (inserts already done inside _scrape_site) -
+        for site, new_count, error in results:
+            if error:
+                stats["sites_error"] += 1
+                stats["errors"][site.name] = error
+            else:
+                stats["sites_ok"] += 1
+
+        # -- Console summary ------------------------------------------
+        print("\n" + "=" * 60)
+        print(f"[PIPELINE] Run complete  run_id={run_id}")
+        print(f"[PIPELINE] Sites OK      : {stats['sites_ok']}")
+        print(f"[PIPELINE] Sites failed  : {stats['sites_error']}")
+        print(f"[PIPELINE] New tenders   : {stats['new_count']}")
+        if stats["errors"]:
+            for site_name, err in stats["errors"].items():
+                print(f"[PIPELINE]   **  {site_name}: {err}")
+        print("=" * 60 + "\n")
+
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        interrupted = True
+        print("\n[PIPELINE] !! Interrupted by user (Ctrl+C / stop signal)")
+        print(f"[PIPELINE]    Collected {len(new_tender_rows)} new tender(s) before stop")
+        log.warning("pipeline.interrupted", new_so_far=len(new_tender_rows))
+
+    except Exception as exc:
+        interrupted = True
+        print(f"\n[PIPELINE] !! Crashed unexpectedly: {exc}")
+        print(f"[PIPELINE]    Collected {len(new_tender_rows)} new tender(s) before crash")
+        log.error("pipeline.crashed", error=str(exc), new_so_far=len(new_tender_rows))
+
+    finally:
+        # -- Email digest ------------------------------------------------
+        # Fires in ALL cases: normal completion, Ctrl+C, or crash.
+        # new_tender_rows holds every tender inserted THIS run in-memory.
+        # No extra DB round-trip needed.
+        if interrupted:
+            print("[EMAIL]  Pipeline was interrupted -- sending partial digest if any tenders found ...")
+
+        email_sent = _send_email_digest(new_tender_rows, run_id=run_id)
+
+        # -- Finalise run ------------------------------------------------
+        finish_run(
+            run_id=run_id,
+            sites_ok=stats["sites_ok"],
+            sites_error=stats["sites_error"],
+            new_count=stats["new_count"],
+            email_sent=email_sent,
+            error_log=stats["errors"] or None,
+            status="interrupted" if interrupted else (
+                "failed" if stats["sites_error"] == len(sites) else "completed"
+            ),
+        )
+
+        log.info(
+            "pipeline.done",
+            new=stats["new_count"],
+            ok=stats["sites_ok"],
+            errors=stats["sites_error"],
+            email_sent=email_sent,
+            interrupted=interrupted,
+        )
 
 
 def main() -> None:

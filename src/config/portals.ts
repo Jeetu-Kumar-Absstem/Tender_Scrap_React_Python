@@ -16,6 +16,18 @@ export interface PortalConfig {
 
 export const PORTALS: PortalConfig[] = [
   {
+    id: 'eproc',
+    name: 'eProcurement',
+    icon: FileSearch,
+    color: 'blue',
+    description: 'National & State eProcurement portal tenders',
+    tableName: 'tenders',
+    enabled: true,
+    comingSoon: false,
+    scraperEndpoint: '/api/run',
+    statusEndpoint: '/api/status',
+  },
+  {
     id: 'gem',
     name: 'GeM.gov',
     icon: Shield,

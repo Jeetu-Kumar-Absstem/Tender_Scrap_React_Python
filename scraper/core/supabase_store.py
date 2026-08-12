@@ -133,3 +133,20 @@ def insert_tender(record: TenderRecord) -> Optional[str]:
         else:
             log.error("tender.insert_failed", error=err, url=record.source_url)
         return None
+
+
+# ─── Archive expired tenders ───────────────────────────────
+def archive_expired_eproc_tenders() -> int:
+    """
+    Triggers RPC shift_expired_eproc_tenders stored procedure to shift
+    past-due tenders into archieve_eproc_tenders.
+    """
+    try:
+        client = _get_client()
+        res = client.rpc("shift_expired_eproc_tenders", {}).execute()
+        count = res.data or 0
+        log.info("eproc.archived_expired", count=count)
+        return count
+    except Exception as exc:
+        log.warning("eproc.archive_expired_failed", error=str(exc))
+        return 0

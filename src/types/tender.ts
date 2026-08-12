@@ -32,6 +32,12 @@ export interface Tender {
   user_status: UserStatus
 }
 
+export interface ArchivedEprocTender extends Tender {
+  original_id: string
+  archived_at: string
+  archive_reason: 'expired' | 'manual_delete' | 'pipeline_cleanup'
+}
+
 // ─── Scrape run record ───────────────────────────────────────
 export interface ScrapeRun {
   id: string

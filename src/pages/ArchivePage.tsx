@@ -11,6 +11,7 @@ import { clsx } from 'clsx'
 import { motion } from 'framer-motion'
 import { useArchiveGemTenders, useDeleteArchiveGemTender } from '../hooks/useArchiveGemTenders'
 import type { ArchivedGemTender } from '../hooks/useArchiveGemTenders'
+import { useArchiveEprocTenders } from '../hooks/useArchiveEprocTenders'
 import { PORTALS } from '../config/portals'
 import { extractState, getUniqueStates } from '../config/filterData'
 
@@ -237,16 +238,17 @@ function ArchiveRow({ tender }: { tender: ArchivedGemTender }) {
 export default function ArchivePage() {
   const navigate = useNavigate()
 
-  const [selectedPortal, setSelectedPortal] = useState<string>('gem')
+  const [selectedPortal, setSelectedPortal] = useState<string>('eproc')
   const [selectedState, setSelectedState] = useState<string>('all')
   const [selectedReason, setSelectedReason] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState<string>('')
 
   // Fetch data for selected portal
   const { data: gemTenders = [], isLoading: isLoadingGem } = useArchiveGemTenders()
+  const { data: eprocTenders = [], isLoading: isLoadingEproc } = useArchiveEprocTenders()
 
-  const isLoading = isLoadingGem
-  const tenders = gemTenders
+  const isLoading = selectedPortal === 'eproc' ? isLoadingEproc : isLoadingGem
+  const tenders = selectedPortal === 'eproc' ? (eprocTenders as any[]) : (gemTenders as any[])
 
   const allStates = useMemo(() => {
     return getUniqueStates(tenders)

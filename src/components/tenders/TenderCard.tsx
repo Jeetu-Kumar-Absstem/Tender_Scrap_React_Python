@@ -166,7 +166,7 @@ export default function TenderCard({ tender }: Props) {
   // Auto-delete from DB and hide expired tenders immediately
   useEffect(() => {
     if (deadlinePast) {
-      deleteTender.mutate(tender.id)
+      deleteTender.mutate(tender)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deadlinePast, tender.id])
@@ -174,7 +174,7 @@ export default function TenderCard({ tender }: Props) {
   if (deadlinePast) return null
 
   const handleConfirmDelete = () => {
-    deleteTender.mutate(tender.id, {
+    deleteTender.mutate(tender, {
       onSuccess: () => setShowDelete(false),
     })
   }

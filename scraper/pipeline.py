@@ -33,7 +33,7 @@ import structlog
 from playwright.async_api import async_playwright, Browser
 
 from .core.schema import SITES_BY_TYPE, SiteType, SiteConfig
-from .core.supabase_store import create_run, finish_run, fetch_all_seen_signatures, insert_tender
+from .core.supabase_store import create_run, finish_run, fetch_all_seen_signatures, insert_tender, archive_expired_eproc_tenders
 from .email.brevo import send_digest
 from .scrapers.type_a import scrape_type_a
 from .scrapers.type_b import scrape_type_b
@@ -300,6 +300,12 @@ async def run_pipeline() -> None:
                 "failed" if stats["sites_error"] == len(sites) else "completed"
             ),
         )
+
+        # -- Archive expired tenders (server-side only, once per run) ----
+        # Do NOT call this from the frontend — it caused repeated 409 conflicts.
+        # Only runs on successful/partial completion, not on hard crash.
+        if not interrupted:
+            archive_expired_eproc_tenders()
 
         log.info(
             "pipeline.done",

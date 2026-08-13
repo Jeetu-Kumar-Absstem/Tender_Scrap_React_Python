@@ -110,7 +110,7 @@ def _normalise_date(raw: str) -> Optional[str]:
         dt = datetime.strptime(raw[:11].strip(), "%d-%b-%Y")
         return dt.strftime("%Y-%m-%d")
     except ValueError:
-        pass
+        passg
     try:
         dt = datetime.strptime(raw[:10].strip(), "%d/%m/%Y")
         return dt.strftime("%Y-%m-%d")

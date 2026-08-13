@@ -152,6 +152,7 @@ KEYWORD_CATEGORIES = {
         "oxygen plant comprehensive maintenance",
     ],
     "nitrogen": [
+        "nitrogen generator",
         "nitrogen gas plant",
         "nitrogen psa plant",
         "nitrogen gas generation",
@@ -221,7 +222,7 @@ KEYWORD_CATEGORIES = {
         "medical oxygen generation system",
         "medical gas pipeline system",
         "oxygen generation system for hospital",
-        "liquid medical oxygen",  # shall we remove this keyword
+        # "liquid medical oxygen",  # shall we remove this keyword
     ],
     "industrial oxygen": [
         "industrial oxygen generator",
@@ -274,25 +275,21 @@ KEYWORD_CATEGORIES = {
 }
 
 # KEYWORD_CATEGORIES = {
-#     "psa": [
-#         "psa plant",
-#         "psa nitrogen plant",
-#         "psa oxygen plant",
-#         "psa amc",
-#         "psa cmc",
-#         "psa plant cmc",
-#         "operation and maintenance of psa plant",
-#         "sitc of psa oxygen plant",
-#         "erection and commissioning psa",
-#         "supply installation commissioning psa",
-#         "design supply installation testing commissioning psa",
-#         "retrofitting upgradation of oxygen plant",
-#         "refurbishment of psa plant",
-#         "compressor overhaul psa plant",
-#         "psa plant repair maintenance installation",
-#         "camc psa hospital",
-#         "sitc oxygen generation plant",
+#    "nitrogen": [
+#         "nitrogen generator",
+#         "nitrogen gas plant",
+#         "nitrogen psa plant",
+#         "nitrogen gas generation",
+#         "nitrogen gas generator",
+#         "psa nitrogen",
+#         "nitrogen generation plant",
+#         "On-site nitrogen generation system",
+#         "glass industry nitrogen plant",
+#         "pharma industry nitrogen plant",
+#         "food packaging nitrogen plant",
+#         "nitrogen plant annual maintenance",
 #     ],
+
 # }
 
 EXCLUDE_KEYWORDS = [

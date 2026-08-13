@@ -8,25 +8,39 @@ const db = supabase as any
 
 export type { ArchivedEprocTender }
 
+// Supabase default page size limit
+const PAGE_SIZE = 1000
+
 async function fetchArchiveEprocTenders(): Promise<ArchivedEprocTender[]> {
-  // Trigger shift procedure to auto-move expired tenders (deadline < current_date)
-  try {
-    await db.rpc('shift_expired_eproc_tenders')
-  } catch (err) {
-    console.warn('[useArchiveEproc] RPC shift_expired_eproc_tenders error/missing:', err)
+  // NOTE: shift_expired_eproc_tenders RPC is intentionally NOT called here.
+  // It is called once per run by the Python pipeline (supabase_store.py → finish_run).
+  // Calling it from the frontend caused repeated 409 conflicts because React Query
+  // was re-firing this queryFn on every component mount.
+
+  // Paginate through all archived tenders to bypass Supabase's 1000-row limit
+  const allRows: ArchivedEprocTender[] = []
+  let offset = 0
+
+  while (true) {
+    const { data, error } = await db
+      .from('archieve_eproc_tenders')
+      .select('*')
+      .order('archived_at', { ascending: false })
+      .range(offset, offset + PAGE_SIZE - 1)
+
+    if (error) {
+      console.error('[useArchiveEproc] Error fetching archieve_eproc_tenders:', error)
+      break
+    }
+
+    const rows = (data || []) as ArchivedEprocTender[]
+    allRows.push(...rows)
+
+    if (rows.length < PAGE_SIZE) break  // last page reached
+    offset += PAGE_SIZE
   }
 
-  const { data, error } = await db
-    .from('archieve_eproc_tenders')
-    .select('*')
-    .order('archived_at', { ascending: false })
-
-  if (error) {
-    console.error('[useArchiveEproc] Error fetching archieve_eproc_tenders:', error)
-    return []
-  }
-
-  return (data || []) as ArchivedEprocTender[]
+  return allRows
 }
 
 export function useArchiveEprocTenders() {

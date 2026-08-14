@@ -238,7 +238,7 @@ function ArchiveRow({ tender }: { tender: ArchivedGemTender }) {
 export default function ArchivePage() {
   const navigate = useNavigate()
 
-  const [selectedPortal, setSelectedPortal] = useState<string>('eproc')
+  const [selectedPortal, setSelectedPortal] = useState<string>('gem')
   const [selectedState, setSelectedState] = useState<string>('all')
   const [selectedReason, setSelectedReason] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState<string>('')

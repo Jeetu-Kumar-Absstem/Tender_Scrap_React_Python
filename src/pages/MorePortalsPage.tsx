@@ -10,6 +10,7 @@ import { clsx } from 'clsx'
 import { format, parseISO } from 'date-fns'
 import { useTypeC } from '../hooks/useTypeC'
 import { useGemTenders, useGemTodayTenders, type GemTender } from '../hooks/useGemTenders'
+import { useArchiveGemTenders } from '../hooks/useArchiveGemTenders'
 import { motion, AnimatePresence } from 'framer-motion'
 import { SkeletonGrid } from '../components/ui/SkeletonLoader'
 import GemTenderCard from '../components/tenders/GemTenderCard'
@@ -42,10 +43,15 @@ export default function MorePortalsPage() {
   const typeC = useTypeC()
   const { data: gemTenders = [], refetch: refetchGem, isLoading: isLoadingGem } = useGemTenders()
   const { data: gemTodayTenders = [], refetch: refetchGemToday, isLoading: isLoadingGemToday } = useGemTodayTenders()
+  const { data: archiveGemList = [] } = useArchiveGemTenders()
   const [gemView, setGemView] = useState<'all' | 'today'>('all')
 
+  const archivedGemIds = useMemo(() => new Set(archiveGemList.map((a: any) => a.original_id || a.id)), [archiveGemList])
+  const activeGemTenders = useMemo(() => gemTenders.filter((t: any) => !t.deleted_at && !archivedGemIds.has(t.id)), [gemTenders, archivedGemIds])
+  const activeGemTodayTenders = useMemo(() => gemTodayTenders.filter((t: any) => !t.deleted_at && !archivedGemIds.has(t.id)), [gemTodayTenders, archivedGemIds])
+
   const { isRunning, loading, error, status, trigger, stop } = typeC
-  const tenders = isGem && gemView === 'today' ? gemTodayTenders : gemTenders
+  const tenders = isGem && gemView === 'today' ? activeGemTodayTenders : activeGemTenders
   const refetch = isGem && gemView === 'today' ? refetchGemToday : refetchGem
   const isLoading = isGem && gemView === 'today' ? isLoadingGemToday : isLoadingGem
 

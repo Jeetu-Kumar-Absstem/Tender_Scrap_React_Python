@@ -87,41 +87,71 @@ export function useArchiveGemActions() {
       tender: GemTender
       reason: 'expired' | 'manual_delete' | 'pipeline_cleanup'
     }) => {
-      // 1. Insert into archive table
-      const archiveRow = {
-        original_id: tender.id,
-        title: tender.title,
-        reference_number: tender.reference_number,
-        organization: tender.organization,
-        location: tender.location,
-        deadline: tender.deadline,
-        estimated_value: tender.estimated_value,
-        source_url: tender.source_url,
-        keywords_matched: tender.keywords_matched || [],
-        user_status: tender.user_status,
-        scraped_at: tender.scraped_at,
-        archived_at: new Date().toISOString(),
-        archive_reason: reason,
+      // 1. Check if already in archive (by original_id or reference_number)
+      let isAlreadyArchived = false
+      if (tender.id) {
+        const { data: byId } = await db.from('archive_gem_tenders').select('id').eq('original_id', tender.id).maybeSingle()
+        if (byId) isAlreadyArchived = true
+      }
+      if (!isAlreadyArchived && tender.reference_number) {
+        const { data: byRef } = await db.from('archive_gem_tenders').select('id').eq('reference_number', tender.reference_number).maybeSingle()
+        if (byRef) isAlreadyArchived = true
       }
 
-      const { error: archiveError } = await db
-        .from('archive_gem_tenders')
-        .insert(archiveRow)
+      if (!isAlreadyArchived) {
+        const archiveRow = {
+          original_id: tender.id || crypto.randomUUID(),
+          title: tender.title,
+          reference_number: tender.reference_number,
+          organization: tender.organization,
+          location: tender.location,
+          deadline: tender.deadline,
+          estimated_value: tender.estimated_value,
+          source_url: tender.source_url,
+          keywords_matched: tender.keywords_matched || [],
+          user_status: tender.user_status || 'active',
+          scraped_at: tender.scraped_at,
+          archived_at: new Date().toISOString(),
+          archive_reason: reason,
+        }
 
-      if (archiveError) throw new Error(`Archive insert failed: ${archiveError.message}`)
+        const { error: archiveError } = await db
+          .from('archive_gem_tenders')
+          .insert(archiveRow)
 
-      // 2. Soft delete from main table
-      const { error: deleteError } = await db
-        .from('gem_tenders')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('id', tender.id)
+        if (archiveError && !archiveError.message.includes('unique')) {
+          console.error('[useArchiveGemActions] Archive insert error:', archiveError)
+        }
+      }
 
-      if (deleteError) throw new Error(`Soft delete failed: ${deleteError.message}`)
+      // 2. Remove from gem_tenders table
+      if (tender.id) {
+        await db.from('gem_tenders').update({ deleted_at: new Date().toISOString() }).eq('id', tender.id)
+        await db.from('gem_tenders').delete().eq('id', tender.id)
+      }
+      if (tender.reference_number) {
+        await db.from('gem_tenders').update({ deleted_at: new Date().toISOString() }).eq('reference_number', tender.reference_number)
+        await db.from('gem_tenders').delete().eq('reference_number', tender.reference_number)
+      }
+
+      // 3. Remove from today_gem_tenders table
+      if (tender.id) {
+        await db.from('today_gem_tenders').update({ deleted_at: new Date().toISOString() }).eq('id', tender.id)
+        await db.from('today_gem_tenders').delete().eq('id', tender.id)
+      }
+      if (tender.reference_number) {
+        await db.from('today_gem_tenders').update({ deleted_at: new Date().toISOString() }).eq('reference_number', tender.reference_number)
+        await db.from('today_gem_tenders').delete().eq('reference_number', tender.reference_number)
+      }
+      if (tender.url_hash) {
+        await db.from('today_gem_tenders').delete().eq('url_hash', tender.url_hash)
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gem-tenders'] })
       queryClient.invalidateQueries({ queryKey: ['gem-tenders', 'today'] })
       queryClient.invalidateQueries({ queryKey: ['archive-gem-tenders'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
     },
   })
 

@@ -152,7 +152,7 @@ KEYWORD_CATEGORIES = {
         "oxygen plant comprehensive maintenance",
     ],
     "nitrogen": [
-        "nitrogen generator",
+        # "nitrogen generator",
         "nitrogen gas plant",
         "nitrogen psa plant",
         "nitrogen gas generation",

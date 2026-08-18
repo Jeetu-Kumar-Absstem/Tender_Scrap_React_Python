@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useTenders, useTodaysTenders } from '../hooks/useTenders'
-import { useArchiveEprocTenders } from '../hooks/useArchiveEprocTenders'
 import { usePipeline } from '../hooks/usePipeline'
 import TenderCard from '../components/tenders/TenderCard'
-import { Search, SlidersHorizontal, X, Loader2, Play, Square, CheckCircle2, AlertCircle, Clock, Activity, Archive } from 'lucide-react'
+import { Search, SlidersHorizontal, X, Loader2, Play, Square, CheckCircle2, AlertCircle, Clock, Activity } from 'lucide-react'
 import type { TenderFilters, SiteType, UserStatus } from '../types/tender'
 import { useInView } from '../hooks/useInView'
 import { motion } from 'framer-motion'
@@ -65,7 +64,7 @@ export default function TendersPage() {
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([])
   const [showKeywordDropdown, setShowKeywordDropdown] = useState(false)
   const [keywordQuery, setKeywordQuery] = useState('')
-  const [eprocView, setEprocView] = useState<'all' | 'today' | 'archive'>('all')
+  const [eprocView, setEprocView] = useState<'all' | 'today'>('all')
   const keywordFilterRef = useRef<HTMLDivElement | null>(null)
 
   // Scraper pipeline hook
@@ -91,27 +90,18 @@ export default function TendersPage() {
 
   const { data, isLoading: isLoadingAll, isFetchingNextPage, fetchNextPage, hasNextPage } = useTenders(filters)
   const { data: todaysTenders = [], isLoading: isLoadingToday } = useTodaysTenders()
-  const { data: archivedTenders = [], isLoading: isLoadingArchive } = useArchiveEprocTenders()
   const allTenders = data?.pages.flatMap(p => p.tenders) ?? []
   const total = data?.pages[0]?.total ?? 0
 
-  const archivedOriginalIds = new Set(archivedTenders.map(a => a.original_id || a.id))
-  const activeTodaysTenders = todaysTenders.filter(t => !t.deleted_at && !archivedOriginalIds.has(t.id))
-
-  // Filter archived tenders based on search/keywords if needed
-  const visibleArchivedTenders = selectedKeywords.length
-    ? archivedTenders.filter(t => selectedKeywords.every(keyword => t.keywords_matched?.includes(keyword)))
-    : archivedTenders
+  const activeTodaysTenders = todaysTenders.filter(t => !t.deleted_at)
 
   const visibleTenders = selectedKeywords.length
     ? allTenders.filter(t => selectedKeywords.every(keyword => t.keywords_matched?.includes(keyword)))
     : allTenders
 
-  const displayedCount = eprocView === 'archive'
-    ? visibleArchivedTenders.length
-    : eprocView === 'today'
-      ? activeTodaysTenders.length
-      : (selectedKeywords.length ? visibleTenders.length : total)
+  const displayedCount = eprocView === 'today'
+    ? activeTodaysTenders.length
+    : (selectedKeywords.length ? visibleTenders.length : total)
 
   const sentinelRef = useInView(() => {
     if (hasNextPage && !isFetchingNextPage) fetchNextPage()
@@ -248,7 +238,7 @@ export default function TendersPage() {
         </div>
       </div>
 
-      {/* Sub-tabs for All eProcurement, Today's eProcurement, and Archive eProc Tenders */}
+      {/* Sub-tabs for All eProcurement and Today's eProcurement */}
       <div className="flex flex-wrap gap-2 mt-4">
         <button
           type="button"
@@ -273,19 +263,6 @@ export default function TendersPage() {
           )}
         >
           Today's eProcurement ({activeTodaysTenders.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setEprocView('archive')}
-          className={clsx(
-            'px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-1.5',
-            eprocView === 'archive'
-              ? 'bg-blue-600 text-white shadow-sm'
-              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-          )}
-        >
-          <Archive size={14} />
-          Archive eProc Tenders ({archivedTenders.length})
         </button>
       </div>
 
@@ -428,16 +405,16 @@ export default function TendersPage() {
         </div>
       )}
 
-      {(eprocView === 'today' ? isLoadingToday : eprocView === 'archive' ? isLoadingArchive : isLoadingAll) ? (
+      {(eprocView === 'today' ? isLoadingToday : isLoadingAll) ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 size={20} className="animate-spin text-blue-500" />
           <span className="ml-2 text-sm text-slate-500">Loading tenders...</span>
         </div>
-      ) : (eprocView === 'today' ? activeTodaysTenders : eprocView === 'archive' ? visibleArchivedTenders : visibleTenders).length === 0 ? (
+      ) : (eprocView === 'today' ? activeTodaysTenders : visibleTenders).length === 0 ? (
         <div className="text-center py-16"><p className="text-slate-400 text-sm">No tenders found.</p></div>
       ) : (
         <div className="space-y-3">
-          {(eprocView === 'today' ? activeTodaysTenders : eprocView === 'archive' ? visibleArchivedTenders : visibleTenders).map(t => <TenderCard key={t.id} tender={t} />)}
+          {(eprocView === 'today' ? activeTodaysTenders : visibleTenders).map(t => <TenderCard key={t.id} tender={t} />)}
           {eprocView === 'all' && (
             <div ref={sentinelRef} className="py-4 flex justify-center">
               {isFetchingNextPage && <Loader2 size={16} className="animate-spin text-blue-400" />}

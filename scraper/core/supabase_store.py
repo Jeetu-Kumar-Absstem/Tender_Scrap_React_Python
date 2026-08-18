@@ -7,12 +7,9 @@ Uses service role key (full access — never exposed to frontend).
 Operations:
   - create_run()                  start a scrape run record
   - fetch_all_seen_signatures()   one-time dedup snapshot (ref_no + url_hash set)
-                                  ↳ paginates ALL three sources in chunks of 1000:
-                                      • tenders (active + soft-deleted)
-                                      • archieve_eproc_tenders
+                                  ↳ paginates tenders (active + soft-deleted) in chunks of 1000
   - insert_tender()               write new tender row
   - finish_run()                  update run with final stats
-  - archive_expired_eproc_tenders() shift expired tenders to archive (pipeline only)
 """
 
 from __future__ import annotations
@@ -111,55 +108,27 @@ def _paginate_all(client: Client, table: str, select: str) -> list[dict]:
 # ─── One-time dedup snapshot ──────────────────────────────────
 def fetch_all_seen_signatures() -> set[tuple[str, str]]:
     """
-    Fetch every (reference_number, url_hash) pair we have EVER seen,
-    from TWO sources, so the pipeline never re-inserts anything:
+    Fetch every (reference_number, url_hash) pair from the tenders table
+    so the pipeline never re-inserts anything already seen.
 
-      1. tenders — ALL rows, including soft-deleted ones (no deleted_at filter).
-         Edge case covered: if a tender was manually deleted before its deadline,
-         it still has a row in this table (deleted_at IS NOT NULL). Without loading
-         these rows the scraper would see it as new and re-insert it on the next run.
+    Includes ALL rows (active + soft-deleted) — no deleted_at filter.
+    Edge case covered: if a tender was manually deleted before its deadline,
+    it still has a row in this table (deleted_at IS NOT NULL). Without loading
+    these rows the scraper would see it as new and re-insert it on the next run.
 
-      2. archieve_eproc_tenders — tenders shifted here after deadline passed or
-         manually archived. Without this, any tender that expired and was purged
-         from `tenders` would look brand-new to the scraper.
-
-    Both sets are merged into one in-memory set for O(1) dedup lookups.
-    Each source is paginated in chunks of 1000 to bypass Supabase row limit.
+    Paginated in chunks of 1000 to bypass Supabase's silent row cap.
     Empty strings used as fallback so every tuple is always hashable.
     """
     client = _get_client()
 
-    def _to_sigs(rows: list[dict]) -> set[tuple[str, str]]:
-        return {
-            (row.get("reference_number") or "", row.get("url_hash") or "")
-            for row in rows
-        }
-
-    # Source 1: tenders table — ALL rows (active + soft-deleted)
-    # No .is_("deleted_at", None) filter — we intentionally include deleted rows
-    # so manually-deleted tenders are still recognised as "already seen".
     tender_rows = _paginate_all(client, "tenders", "reference_number, url_hash")
-    tender_sigs = _to_sigs(tender_rows)
+    signatures = {
+        (row.get("reference_number") or "", row.get("url_hash") or "")
+        for row in tender_rows
+    }
 
-    # Source 2: archive table — tenders moved here after expiry/manual archive
-    archive_rows = _paginate_all(client, "archieve_eproc_tenders", "reference_number, url_hash")
-    archive_sigs = _to_sigs(archive_rows)
-
-    # Merge
-    signatures = tender_sigs | archive_sigs
-
-    log.info(
-        "signatures.loaded",
-        from_tenders=len(tender_sigs),
-        from_archive=len(archive_sigs),
-        total_unique=len(signatures),
-    )
-    print(
-        f"[PIPELINE] Signatures loaded — "
-        f"tenders (active+deleted): {len(tender_sigs)}, "
-        f"archived: {len(archive_sigs)}, "
-        f"total unique: {len(signatures)}"
-    )
+    log.info("signatures.loaded", from_tenders=len(signatures))
+    print(f"[PIPELINE] Signatures loaded — tenders (active+deleted): {len(signatures)}")
     return signatures
 
 
@@ -192,26 +161,3 @@ def insert_tender(record: TenderRecord) -> Optional[str]:
         else:
             log.error("tender.insert_failed", error=err, url=record.source_url)
         return None
-
-
-# ─── Archive expired tenders (called by pipeline only) ───────
-def archive_expired_eproc_tenders() -> int:
-    """
-    Triggers RPC shift_expired_eproc_tenders stored procedure to shift
-    past-due tenders into archieve_eproc_tenders.
-
-    IMPORTANT: Must only be called from the Python pipeline (once per run,
-    at the end of run_pipeline). NEVER call from the frontend — it caused
-    repeated 409 conflicts because React Query was re-firing it on every
-    component mount.
-    """
-    try:
-        client = _get_client()
-        res = client.rpc("shift_expired_eproc_tenders", {}).execute()
-        count = res.data if isinstance(res.data, int) else 0
-        log.info("eproc.archived_expired", count=count)
-        print(f"[PIPELINE] Archived {count} expired tender(s) to archieve_eproc_tenders")
-        return count
-    except Exception as exc:
-        log.warning("eproc.archive_expired_failed", error=str(exc))
-        return 0

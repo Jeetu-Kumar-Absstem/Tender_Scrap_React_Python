@@ -12,6 +12,9 @@ Flow:
   7. Update scrape_run with final stats
   8. Close shared browser
 
+Note: expired tender archiving has been removed. Tenders remain in the tenders table
+(soft-deleted via deleted_at) and are never moved to a separate archive table.
+
 Email guarantee:
   - new_tender_rows is built in-memory as tenders are inserted during the run
   - Email fires in a `finally` block so it always runs:
@@ -33,7 +36,7 @@ import structlog
 from playwright.async_api import async_playwright, Browser
 
 from .core.schema import SITES_BY_TYPE, SiteType, SiteConfig
-from .core.supabase_store import create_run, finish_run, fetch_all_seen_signatures, insert_tender, archive_expired_eproc_tenders
+from .core.supabase_store import create_run, finish_run, fetch_all_seen_signatures, insert_tender
 from .email.brevo import send_digest
 from .scrapers.type_a import scrape_type_a
 from .scrapers.type_b import scrape_type_b
@@ -300,12 +303,6 @@ async def run_pipeline() -> None:
                 "failed" if stats["sites_error"] == len(sites) else "completed"
             ),
         )
-
-        # -- Archive expired tenders (server-side only, once per run) ----
-        # Do NOT call this from the frontend — it caused repeated 409 conflicts.
-        # Only runs on successful/partial completion, not on hard crash.
-        if not interrupted:
-            archive_expired_eproc_tenders()
 
         log.info(
             "pipeline.done",

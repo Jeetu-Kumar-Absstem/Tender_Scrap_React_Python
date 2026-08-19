@@ -36,7 +36,10 @@ import structlog
 from playwright.async_api import async_playwright, Browser
 
 from .core.schema import SITES_BY_TYPE, SiteType, SiteConfig
-from .core.supabase_store import create_run, finish_run, fetch_all_seen_signatures, insert_tender
+from .core.supabase_store import (
+    create_run, finish_run, fetch_all_seen_signatures, insert_tender,
+    fetch_all_emailed_refs, mark_tenders_emailed,
+)
 from .email.brevo import send_digest
 from .scrapers.type_a import scrape_type_a
 from .scrapers.type_b import scrape_type_b
@@ -154,25 +157,54 @@ async def _scrape_site(
             return site, 0, str(exc)
 
 
-def _send_email_digest(new_tender_rows: list, run_id: str) -> bool:
+def _send_email_digest(new_tender_rows: list, run_id: str, emailed_refs: set) -> bool:
     """
-    Send email digest if there are new tenders.
+    Send email digest if there are new tenders not yet emailed.
     Called from the finally block so it fires on normal completion,
     Ctrl+C, or any unexpected crash.
     Returns True if email was sent successfully.
+
+    emailed_refs: set of (reference_number, source_site) already emailed
+    in a previous run. Loaded once at pipeline start from emailed_tenders
+    table. Prevents re-emailing a tender that was hard-deleted from tenders
+    and then re-scraped and re-inserted on this run.
+
+    Refs are logged to emailed_tenders ONLY after a successful send so that
+    a failed send is automatically retried on the next run.
     """
     if not new_tender_rows:
         print("[EMAIL]  ii  No new tenders -- digest skipped")
         log.info("pipeline.no_new_tenders")
         return False
 
-    print(f"[EMAIL]  Sending digest for {len(new_tender_rows)} new tender(s) ...")
+    # Filter out anything already emailed in a previous run
+    unseen = [
+        r for r in new_tender_rows
+        if ((r.get("reference_number") or "").strip(), r.get("source_site", ""))
+           not in emailed_refs
+    ]
+    suppressed = len(new_tender_rows) - len(unseen)
+
+    if suppressed:
+        print(f"[EMAIL]  ii  {suppressed} tender(s) suppressed -- already emailed in a previous run")
+        log.info("pipeline.email_suppressed", suppressed=suppressed)
+
+    if not unseen:
+        print("[EMAIL]  ii  All new tenders already emailed before -- digest skipped")
+        log.info("pipeline.all_already_emailed")
+        return False
+
+    print(f"[EMAIL]  Sending digest for {len(unseen)} new tender(s) ...")
     try:
-        email_sent = send_digest(new_tender_rows, run_id=run_id)
+        email_sent = send_digest(unseen, run_id=run_id)
         if email_sent:
             print("[EMAIL]  OK Digest sent successfully")
+            # Log refs AFTER successful send only.
+            # If send fails, refs stay unlogged so the next run retries.
+            mark_tenders_emailed(unseen, run_id=run_id)
         else:
             print("[EMAIL]  !! Digest send failed (check BREVO_* env vars / logs)")
+            print("[EMAIL]  ii  Refs NOT logged -- next run will retry sending")
         return email_sent
     except Exception as exc:
         print(f"[EMAIL]  !! Digest send raised exception: {exc}")
@@ -202,6 +234,11 @@ async def run_pipeline() -> None:
     seen_signatures: set[tuple[str, str]] = fetch_all_seen_signatures()
     print(f"[PIPELINE] Loaded {len(seen_signatures)} existing tender signature(s) from DB")
     log.info("pipeline.signatures_loaded", count=len(seen_signatures))
+
+    # One-time fetch: all (reference_number, source_site) pairs already emailed.
+    # Prevents re-emailing a tender that was hard-deleted and re-scraped this run.
+    emailed_refs: set[tuple[str, str]] = fetch_all_emailed_refs()
+    log.info("pipeline.emailed_refs_loaded", count=len(emailed_refs))
 
     # Accumulates dicts for every newly-inserted tender this run.
     # Used for the email digest -- no extra DB fetch needed.
@@ -244,19 +281,26 @@ async def run_pipeline() -> None:
                     _scrape_site(site, run_id, browser, sem, stats, new_tender_rows, seen_signatures)
                     for site in sites
                 ]
-                results = await asyncio.gather(*tasks, return_exceptions=False)
+                results = await asyncio.gather(*tasks, return_exceptions=True)
 
             finally:
                 await browser.close()
                 log.info("pipeline.browser_closed")
 
         # -- Tally results (inserts already done inside _scrape_site) -
-        for site, new_count, error in results:
-            if error:
+        for result in results:
+            if isinstance(result, Exception):
+                # A site task raised an unhandled exception — count as error
                 stats["sites_error"] += 1
-                stats["errors"][site.name] = error
+                stats["errors"][f"unknown_site_{id(result)}"] = str(result)
+                log.error("pipeline.task_exception", error=str(result))
             else:
-                stats["sites_ok"] += 1
+                site, new_count, error = result
+                if error:
+                    stats["sites_error"] += 1
+                    stats["errors"][site.name] = error
+                else:
+                    stats["sites_ok"] += 1
 
         # -- Console summary ------------------------------------------
         print("\n" + "=" * 60)
@@ -289,7 +333,7 @@ async def run_pipeline() -> None:
         if interrupted:
             print("[EMAIL]  Pipeline was interrupted -- sending partial digest if any tenders found ...")
 
-        email_sent = _send_email_digest(new_tender_rows, run_id=run_id)
+        email_sent = _send_email_digest(new_tender_rows, run_id=run_id, emailed_refs=emailed_refs)
 
         # -- Finalise run ------------------------------------------------
         finish_run(

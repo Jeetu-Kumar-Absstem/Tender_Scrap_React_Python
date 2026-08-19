@@ -10,6 +10,9 @@ Operations:
                                   ↳ paginates tenders (active + soft-deleted) in chunks of 1000
   - insert_tender()               write new tender row
   - finish_run()                  update run with final stats
+  - fetch_all_emailed_refs()      one-time email-dedup snapshot (ref_no + source_site set)
+                                  ↳ paginates emailed_tenders in chunks of 1000
+  - mark_tenders_emailed()        log emailed refs AFTER a successful digest send
 """
 
 from __future__ import annotations
@@ -130,6 +133,72 @@ def fetch_all_seen_signatures() -> set[tuple[str, str]]:
     log.info("signatures.loaded", from_tenders=len(signatures))
     print(f"[PIPELINE] Signatures loaded — tenders (active+deleted): {len(signatures)}")
     return signatures
+
+
+# ─── Email dedup snapshot ─────────────────────────────────────
+def fetch_all_emailed_refs() -> set[tuple[str, str]]:
+    """
+    Fetch every (reference_number, source_site) pair from emailed_tenders.
+    Called once at pipeline start, same pattern as fetch_all_seen_signatures().
+
+    Purpose: prevent re-emailing a tender that was hard-deleted from the
+    tenders table (so it no longer appears in seen_signatures) and then
+    re-scraped and re-inserted on a subsequent run.
+
+    Paginated in chunks of 1000 to bypass Supabase's silent row cap.
+    """
+    client = _get_client()
+
+    rows = _paginate_all(client, "emailed_tenders", "reference_number, source_site")
+    refs = {
+        (row.get("reference_number") or "", row.get("source_site") or "")
+        for row in rows
+    }
+
+    log.info("emailed_refs.loaded", count=len(refs))
+    print(f"[PIPELINE] Emailed refs loaded — emailed_tenders: {len(refs)}")
+    return refs
+
+
+def mark_tenders_emailed(rows: list[dict], run_id: str) -> None:
+    """
+    Insert one row into emailed_tenders for every tender that was included
+    in a successfully sent digest email.
+
+    Called ONLY after send_digest() returns True — if the email fails,
+    refs are NOT logged so the next run will retry sending them.
+
+    Upsert with on_conflict so concurrent runs and retries are safe
+    (duplicate upsert is a no-op — emailed_at is not overwritten).
+
+    Skips tenders with no reference_number (rare edge case on some portals).
+    """
+    client = _get_client()
+
+    records = []
+    for r in rows:
+        ref = (r.get("reference_number") or "").strip()
+        if not ref:
+            log.debug("mark_emailed.skipped_no_ref", url_hash=r.get("url_hash"), site=r.get("source_site"))
+            continue
+        records.append({
+            "reference_number": ref,
+            "url_hash":         r.get("url_hash", ""),
+            "source_site":      r.get("source_site", ""),
+            "run_id":           run_id,
+        })
+
+    if not records:
+        log.info("mark_emailed.nothing_to_log")
+        return
+
+    client.table("emailed_tenders").upsert(
+        records,
+        on_conflict="reference_number,source_site",
+    ).execute()
+
+    log.info("mark_emailed.done", count=len(records))
+    print(f"[EMAIL]  Logged {len(records)} ref(s) to emailed_tenders")
 
 
 # ─── Insert tender ───────────────────────────────────────────

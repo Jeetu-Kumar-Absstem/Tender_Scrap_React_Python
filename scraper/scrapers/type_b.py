@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 import random
 import structlog
 from datetime import datetime, timezone
@@ -336,6 +337,43 @@ async def _parse_results_table(
     else:
         row_count = await rows.count()
 
+    # ── Header recovery ───────────────────────────────────────────────────────
+    # When _find_results_rows() finds tr[id^="informal_"] directly, the header
+    # parse block above is skipped and header_map stays {}.
+    # All NIC portals (J&K, Haryana, UP, Maharashtra etc.) use the SAME layout:
+    #   S.No | e-Published Date | Closing Date | Opening Date | Title+Ref | Org
+    # So we recover the header by scanning ALL <tr> on the page for one that
+    # contains the known header keywords — no CSS :has() needed.
+    if not header_map:
+        try:
+            all_rows_on_page = page.locator("tr")
+            total = await all_rows_on_page.count()
+            for h_idx in range(min(total, 20)):   # scan first 20 rows max
+                h_row = all_rows_on_page.nth(h_idx)
+                raw_cells = h_row.locator("td,th")
+                raw_count = await raw_cells.count()
+                if raw_count == 0:
+                    continue
+                header_texts = []
+                for c in range(raw_count):
+                    header_texts.append((await raw_cells.nth(c).inner_text()).strip())
+                candidate = _header_index_map(header_texts)
+                if candidate:
+                    header_map = candidate
+                    log.debug("nic.header_recovered", site=site_config.name, header_map=str(header_map))
+                    break
+        except Exception as exc:
+            log.debug("nic.header_recovery_failed", site=site_config.name, error=str(exc))
+
+    # ── NIC portal ref-number pattern ─────────────────────────────────────────
+    # All NIC portals embed the tender ID as the LAST token matching this pattern
+    # inside the combined "Title and Ref.No./Tender ID" cell, e.g.:
+    #   [TENDER TITLE] [NIT/2026-27/38] [2026_PWDJK_318894_2]
+    #                                    ^^^^^^^^^^^^^^^^^^^^^ ← what we want
+    # The pattern is: 4-digit-year _ ORGCODE _ digits _ revision
+
+    _NIC_REF_PATTERN = re.compile(r'\b(20\d{2}_[A-Z0-9]+_\d+_\d+)\b')
+
     seen_keys: set[str] = set()
 
     for idx in range(row_count):
@@ -347,14 +385,15 @@ async def _parse_results_table(
                 continue
 
             if header_map:
-                title_idx = header_map.get("title", 0)
-                ref_idx = header_map.get("reference", 1 if cell_count > 1 else 0)
-                closing_idx = header_map.get("closing", 2 if cell_count > 2 else ref_idx)
+                title_idx   = header_map.get("title",     0)
+                ref_idx     = header_map.get("reference", 1 if cell_count > 1 else 0)
+                closing_idx = header_map.get("closing",   2 if cell_count > 2 else ref_idx)
             else:
-                if cell_count >= 4:
-                    title_idx, ref_idx, closing_idx = 0, 1, 2
-                elif cell_count == 3:
-                    title_idx, ref_idx, closing_idx = 0, 1, 2
+                # Absolute fallback — all NIC portals are 6 cols, title+ref is col 4
+                if cell_count >= 5:
+                    title_idx, ref_idx, closing_idx = 4, 4, 2
+                elif cell_count >= 3:
+                    title_idx, ref_idx, closing_idx = 2, 2, 1
                 else:
                     title_idx, ref_idx, closing_idx = 0, 0, 0
 
@@ -369,7 +408,7 @@ async def _parse_results_table(
                     continue
                 try:
                     title = (await link.inner_text()).strip()
-                    href = (await link.get_attribute("href")) or ""
+                    href  = (await link.get_attribute("href")) or ""
                 except Exception:
                     continue
 
@@ -379,24 +418,41 @@ async def _parse_results_table(
             if title.lower() in {"search", "view more", "view more details", "back", "home", "go"}:
                 continue
 
+            # ── Extract reference number ───────────────────────────────────
             ref_no = ""
             if ref_idx < cell_count:
                 try:
                     ref_cell_text = (await cells.nth(ref_idx).inner_text()).strip()
+
                     if ref_idx == title_idx:
-                        # J&K combined column: cell looks like
-                        # "[CAMC/Operationalization of Oxygen...] [MHDU/TS/2026-27/14]\n[2026_PWDJK_311911_1]"
-                        # Use the last [bracketed] token as the reference number
-                        import re as _re
-                        bracket_matches = _re.findall(r'\[([^\]]+)\]', ref_cell_text)
-                        ref_no = bracket_matches[-1].strip() if bracket_matches else ""
+                        # Combined "Title and Ref.No./Tender ID" column (all NIC portals).
+                        # Strategy 1: look for the standard NIC tender ID pattern first.
+                        #   e.g. 2026_PWDJK_318894_2 or 2026_HBC_514242_1
+                        nic_match = _NIC_REF_PATTERN.search(ref_cell_text)
+                        if nic_match:
+                            ref_no = nic_match.group(1)
+                        else:
+                            # Strategy 2: last [bracketed] token that is NOT the title
+                            # and NOT a date-like string.
+                            bracket_matches = re.findall(r'\[([^\]]+)\]', ref_cell_text)
+                            for token in reversed(bracket_matches):
+                                token = token.strip()
+                                # skip if it looks like a date or the tender title
+                                if re.search(r'\d{2}-[A-Za-z]{3}-\d{4}', token):
+                                    continue
+                                if len(token) > 80:   # too long → it's the title
+                                    continue
+                                ref_no = token
+                                break
                     else:
+                        # Standalone reference column — use as-is
                         ref_no = ref_cell_text
                 except Exception:
                     ref_no = ""
 
+            # ── Extract closing date ───────────────────────────────────────
             raw_date = ""
-            if closing_idx < cell_count:
+            if closing_idx < cell_count and closing_idx != title_idx:
                 try:
                     raw_date = (await cells.nth(closing_idx).inner_text()).strip()
                 except Exception:

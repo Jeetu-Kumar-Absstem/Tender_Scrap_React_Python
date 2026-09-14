@@ -152,7 +152,9 @@ KEYWORD_CATEGORIES = {
         "oxygen plant comprehensive maintenance",
     ],
     "nitrogen": [
-        # "nitrogen generator",
+        # "nitrogen generator", we should add this or
+        #  remove this
+        "Nitrogen Gas Generator",
         "nitrogen gas plant",
         "nitrogen psa plant",
         "nitrogen gas generation",
@@ -166,6 +168,8 @@ KEYWORD_CATEGORIES = {
         "nitrogen plant annual maintenance",
     ],
     "comprehensive maintenance contract": [
+        "oxygen plant","nitrogen plant","psa plant",
+        "oxygen gas plant","nitrogen gas plant","psa gas plant",
         "comprehensive maintenance contract psa plant",
         "comprehensive maintenance contract oxygen plant",
         "comprehensive maintenance contract nitrogen plant",
@@ -210,12 +214,16 @@ KEYWORD_CATEGORIES = {
         "o&m psa plant",
     ],
     "Pressure Swing Adsorption plant": [
+         "oxygen plant","nitrogen plant","psa plant",
+                "oxygen gas plant","nitrogen gas plant","psa gas plant",
         "Pressure Swing Adsorption plant",
         "Pressure Swing Adsorption oxygen generator",
         "Pressure Swing Adsorption nitrogen generator",
         "zeolite molecular sieve",
     ],
     "medical oxygen plant": [
+         "oxygen plant","nitrogen plant","psa plant",
+                "oxygen gas plant","nitrogen gas plant","psa gas plant",
         "medical oxygen plant",
         "medical oxygen generator",
         "medical oxygen generation plant",
@@ -225,6 +233,8 @@ KEYWORD_CATEGORIES = {
         # "liquid medical oxygen",  # shall we remove this keyword
     ],
     "industrial oxygen": [
+         "oxygen plant","nitrogen plant","psa plant",
+                "oxygen gas plant","nitrogen gas plant","psa gas plant",
         "industrial oxygen generator",
         "industrial nitrogen generator",
         "psu industrial oxygen plant",
@@ -234,6 +244,8 @@ KEYWORD_CATEGORIES = {
         # // we can add industrial oxygen plant and industrial nitrogen plant as well
     ],
     "Molecular sieve oxygen plant": [
+         "oxygen plant","nitrogen plant","psa plant",
+                "oxygen gas plant","nitrogen gas plant","psa gas plant",
         "Molecular sieve oxygen plant",
         "Molecular sieve refilling",
         "zeolite molecular sieve plant",
@@ -249,6 +261,8 @@ KEYWORD_CATEGORIES = {
         "Carbon molecular sieve nitrogen plant",
     ],
     "camc": [
+         "oxygen plant","nitrogen plant","psa plant",
+                "oxygen gas plant","nitrogen gas plant","psa gas plant",
         "camc oxygen plant",
         "camc nitrogen plant",
         "Comprehensive Annual Maintenance Contract psa plant",

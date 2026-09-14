@@ -61,7 +61,7 @@ INCLUDE_KEYWORDS: list[str] =[
     
     # Additional from your INCLUDE_KEYWORDS (merged where applicable)
     "vpsa", "oxygen concentrator", "oxygen gas plant","nitrogen gas plant", "oxygen gas generation","nitrogen gas generation"
-    , "nitrogen gas plant","nitrogen concentrator","camc of nitrogen plant","camc of oxygen plant"
+   ,"nitrogen concentrator","camc of nitrogen plant","camc of oxygen plant"
 
 
     #  "o2 plant","liquid oxygen"

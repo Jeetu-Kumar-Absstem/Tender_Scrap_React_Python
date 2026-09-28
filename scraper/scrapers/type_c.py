@@ -60,7 +60,6 @@ except Exception as _e:
         return False
 
 # ─── PDF Library Detection ──────────────────────────────────────────────
-
 PDF_LIB = None
 PDF_LIB_NAME = None
 
@@ -132,6 +131,8 @@ KEYWORD_CATEGORIES = {
         "psa plant repair maintenance installation",
         "camc psa hospital",
         "sitc oxygen generation plant",
+        "psa oxygen",
+        "psa nitrogen",
     ],
     "oxygen": [
         "oxygen plant",
@@ -150,6 +151,7 @@ KEYWORD_CATEGORIES = {
         "oxygen generation system for hospital",
         "replacement of oxygen plant",
         "oxygen plant comprehensive maintenance",
+        "oxygen gas"
     ],
     "nitrogen": [
         # "nitrogen generator", we should add this or
@@ -166,6 +168,7 @@ KEYWORD_CATEGORIES = {
         "pharma industry nitrogen plant",
         "food packaging nitrogen plant",
         "nitrogen plant annual maintenance",
+        "nitrogen gas"
     ],
     "comprehensive maintenance contract": [
         "oxygen plant","nitrogen plant","psa plant",
@@ -212,6 +215,8 @@ KEYWORD_CATEGORIES = {
         "psa oxygen plant amc tender",
         "psa nitrogen plant amc tender",
         "o&m psa plant",
+        "oxygen gas",
+        "nitrogen gas",
     ],
     "Pressure Swing Adsorption plant": [
          "oxygen plant","nitrogen plant","psa plant",
@@ -220,6 +225,8 @@ KEYWORD_CATEGORIES = {
         "Pressure Swing Adsorption oxygen generator",
         "Pressure Swing Adsorption nitrogen generator",
         "zeolite molecular sieve",
+        "psa oxygen",
+        "psa nitrogen",
     ],
     "medical oxygen plant": [
          "oxygen plant","nitrogen plant","psa plant",
@@ -230,6 +237,9 @@ KEYWORD_CATEGORIES = {
         "medical oxygen generation system",
         "medical gas pipeline system",
         "oxygen generation system for hospital",
+        "psa oxygen",
+        "oxygen gas generation",
+        "oxygen gas plant",
         # "medical oxygen flowmeter", # shall we add this
         # "liquid medical oxygen",  # shall we remove this keyword
     ],
@@ -242,6 +252,7 @@ KEYWORD_CATEGORIES = {
         "steel plant oxygen plant",
         "industrial oxygen plant",
         "industrial nitrogen plant",
+        "psa oxygen",
         # // we can add industrial oxygen plant and industrial nitrogen plant as well
     ],
     "Molecular sieve oxygen plant": [
@@ -252,14 +263,20 @@ KEYWORD_CATEGORIES = {
         "zeolite molecular sieve plant",
         "zeolite sieve replacement",
         "air dryer maintenance",
+        "psa oxygen",
+        "psa nitrogen",
+        "oxygen gas generation",
     ],
     "Zeolite molecular sieve plant": [
         "Zeolite molecular sieve plant",
         "Zeolite/sieve replacement",
         "Carbon molecular sieve nitrogen plant",
+        "psa oxygen","psa nitrogen","oxygen gas generation",
+        "nitrogen gas generation","oxygen gas plant","nitrogen gas plant",
     ],
     "Carbon molecular sieve nitrogen plant": [
         "Carbon molecular sieve nitrogen plant",
+        "psa nitrogen","nitrogen gas generation","nitrogen gas plant",
     ],
     "camc": [
          "oxygen plant","nitrogen plant","psa plant",
@@ -267,6 +284,8 @@ KEYWORD_CATEGORIES = {
         "camc oxygen plant",
         "camc nitrogen plant",
         "Comprehensive Annual Maintenance Contract psa plant",
+        "camc psa plant","camc oxygen plant",
+        "camc nitrogen plant","camc oxygen gas plant","camc nitogen gas plant",
     ],
     "government hospital": [
         "government hospital psa plant",
@@ -278,6 +297,8 @@ KEYWORD_CATEGORIES = {
         "railway hospital oxygen plant",
         "defence hospital oxygen plant",
         "pm cares oxygen plant",
+        "psa oxygen","oxygen gas generation","oxygen gas plant",
+        "oxygen psa plant","oxygen plant",
     ],
     "sitc": [
         "turnkey supply installation testing commissioning",

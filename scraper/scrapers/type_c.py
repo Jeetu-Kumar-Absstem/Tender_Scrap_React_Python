@@ -230,6 +230,7 @@ KEYWORD_CATEGORIES = {
         "medical oxygen generation system",
         "medical gas pipeline system",
         "oxygen generation system for hospital",
+        # "medical oxygen flowmeter", # shall we add this
         # "liquid medical oxygen",  # shall we remove this keyword
     ],
     "industrial oxygen": [

@@ -151,7 +151,6 @@ KEYWORD_CATEGORIES = {
         "oxygen generation system for hospital",
         "replacement of oxygen plant",
         "oxygen plant comprehensive maintenance",
-        "oxygen gas"
     ],
     "nitrogen": [
         # "nitrogen generator", we should add this or
@@ -168,7 +167,6 @@ KEYWORD_CATEGORIES = {
         "pharma industry nitrogen plant",
         "food packaging nitrogen plant",
         "nitrogen plant annual maintenance",
-        "nitrogen gas"
     ],
     "comprehensive maintenance contract": [
         "oxygen plant","nitrogen plant","psa plant",
@@ -215,8 +213,6 @@ KEYWORD_CATEGORIES = {
         "psa oxygen plant amc tender",
         "psa nitrogen plant amc tender",
         "o&m psa plant",
-        "oxygen gas",
-        "nitrogen gas",
     ],
     "Pressure Swing Adsorption plant": [
          "oxygen plant","nitrogen plant","psa plant",

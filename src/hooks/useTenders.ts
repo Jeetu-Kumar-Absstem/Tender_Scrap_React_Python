@@ -181,6 +181,7 @@ export function useDashboardStats() {
         gem_today: gemToday,
         sites_monitored: Object.keys(siteCounts).length,
         last_run_at: lastRun?.started_at ?? null,
+        last_run_status: lastRun?.status ?? null,
         tenders_by_site: Object.entries(siteCounts).map(([site, count]) => ({ site, count })).sort((a, b) => b.count - a.count).slice(0, 10),
         tenders_by_keyword: Object.entries(kwCounts).map(([keyword, count]) => ({ keyword, count })).sort((a, b) => b.count - a.count),
         gem_keywords: Object.entries(gemKwCounts).map(([keyword, count]) => ({ keyword, count })).sort((a, b) => b.count - a.count),

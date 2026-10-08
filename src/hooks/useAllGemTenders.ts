@@ -1,6 +1,3 @@
-import { useQuery } from '@tanstack/react-query'
-import { supabase } from '../lib/supabase'
-import type { GemTender } from './gemTender'
 import { useArchiveGemTenders } from './useArchiveGemTenders'
 import { useGemTenders } from './useGemTenders'
 
@@ -13,10 +10,6 @@ export function useAllGemTenders() {
   const { data: archivedTenders = [] } = useArchiveGemTenders()
 
   // Combine both lists into a single array
-  // We use useQuery or a simple combine logic here.
-  // Since the base hooks are already using useQuery,
-  // we can just merge the results.
-
   const combined = [...activeTenders, ...archivedTenders]
 
   // Sort by date (most recent first) using scraped_at as priority

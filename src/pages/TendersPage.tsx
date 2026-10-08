@@ -1,71 +1,82 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useTenders, useTodaysTenders } from '../hooks/useTenders'
+import { useTodaysTenders, useTendersAll } from '../hooks/useTenders'
 import { usePipeline } from '../hooks/usePipeline'
 import TenderCard from '../components/tenders/TenderCard'
 import { Search, SlidersHorizontal, X, Loader2, Play, Square, CheckCircle2, AlertCircle, Clock, Activity } from 'lucide-react'
-import type { TenderFilters, SiteType, UserStatus } from '../types/tender'
+import type { TenderFilters, SiteType, UserStatus, Tender } from '../types/tender'
 import { useInView } from '../hooks/useInView'
 import { motion } from 'framer-motion'
 import { clsx } from 'clsx'
+import { useLocation } from 'react-router-dom'
+import { COMMON_STATES, extractState } from '../config/filterData'
 
 const KEYWORDS = [
   'psa plant',
-        'psa nitrogen plant',
-        'psa oxygen plant',
-        'psa oxygen',
-        'psa nitrogen',
-        'oxygen plant',
-        'oxygen psa plant',
-        'oxygen gas generation',
-        'oxygen gas generator',
-        'oxygen generator',
-        'nitrogen plant',
-        'nitrogen psa plant',
-        'nitrogen gas generation',
-        'nitrogen gas generator',
-        'nitrogen generator',
-        'comprehensive maintenance contract psa plant',
-        'comprehensive maintenance contract oxygen plant',
-        'comprehensive maintenance contract nitrogen plant',
-        'annual maintenance contract psa plant',
-        'annual maintenance contract oxygen plant',
-        'annual maintenance contract nitrogen plant',
-        'psa amc',
-        'psa cmc',
-        'psa plant cmc',
-        'amc psa oxygen plant',
-        'cmc psa oxygen plant',
-        'amc psa nitrogen plant',
-        'cmc psa nitrogen plant',
-        'amc psa plany',
-        'cmc psa plant',
-        'preventive maintenance oxygen generator',
-        'oxygen plant repair maintenance',
-        'nitrogen plant repair maintenance',
-        'breakdown maintenance oxygen plant',
-        'breakdown maintenance nitrogen plant',
-        'breakdown maintenance psa plant',
-        'comprehensive annual maintenance contract of psa oxygen generation plant',
-        'comprehensive annual maintenance contract psa plant',
-        'comprehensive annual maintenance contract nitrogen plant',
-        'customized amc/cmc for pre-owned products - psa plant',
-        'customized amc/cmc for pre-owned products - oxygen psa plant',
-        'customized amc/cmc for pre-owned products - nitrogen psa plant',
-        'customized amc/cmc for pre-owned products - nitrogen gas plant',
-        'customized amc/cmc for pre-owned products - psa oxygen generation plant',
-        'customized amc/cmc for pre-owned products - comprehensive annual maintenance contract of psa oxygen generation plant',
-        'customized amc/cmc for pre-owned products - mgpl system',
+  'psa nitrogen plant',
+  'psa oxygen plant',
+  'psa oxygen',
+  'psa nitrogen',
+  'oxygen plant',
+  'oxygen psa plant',
+  'oxygen gas generation',
+  'oxygen gas generator',
+  'oxygen generator',
+  'nitrogen plant',
+  'nitrogen psa plant',
+  'nitrogen gas generation',
+  'nitrogen gas generator',
+  'nitrogen generator',
+  'comprehensive maintenance contract psa plant',
+  'comprehensive maintenance contract oxygen plant',
+  'comprehensive maintenance contract nitrogen plant',
+  'annual maintenance contract psa plant',
+  'annual maintenance contract oxygen plant',
+  'annual maintenance contract nitrogen plant',
+  'psa amc',
+  'psa cmc',
+  'psa plant cmc',
+  'amc psa oxygen plant',
+  'cmc psa oxygen plant',
+  'amc psa nitrogen plant',
+  'cmc psa nitrogen plant',
+  'amc psa plany',
+  'cmc psa plant',
+  'preventive maintenance oxygen generator',
+  'oxygen plant repair maintenance',
+  'nitrogen plant repair maintenance',
+  'breakdown maintenance oxygen plant',
+  'breakdown maintenance nitrogen plant',
+  'breakdown maintenance psa plant',
+  'comprehensive annual maintenance contract of psa oxygen generation plant',
+  'comprehensive annual maintenance contract psa plant',
+  'comprehensive annual maintenance contract nitrogen plant',
+  'customized amc/cmc for pre-owned products - psa plant',
+  'customized amc/cmc for pre-owned products - oxygen psa plant',
+  'customized amc/cmc for pre-owned products - psa nitrogen plant',
+  'customized amc/cmc for pre-owned products - nitrogen gas plant',
+  'customized amc/cmc for pre-owned products - psa oxygen generation plant',
+  'customized amc/cmc for pre-owned products - comprehensive annual maintenance contract of psa oxygen generation plant',
+  'customized amc/cmc for pre-owned products - mgpl system',
 ]
 
 export default function TendersPage() {
-  const [filters, setFilters] = useState<TenderFilters>({ user_status: 'all' })
+  const location = useLocation()
+  const stateFilters = location.state?.filters
+
+  const [filters, setFilters] = useState<TenderFilters>({
+    user_status: 'all',
+    ...(stateFilters || {})
+  })
   const [showFilters, setShowFilters] = useState(false)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(stateFilters?.search || '')
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([])
   const [showKeywordDropdown, setShowKeywordDropdown] = useState(false)
   const [keywordQuery, setKeywordQuery] = useState('')
   const [eprocView, setEprocView] = useState<'all' | 'today'>('all')
   const keywordFilterRef = useRef<HTMLDivElement | null>(null)
+
+  // Handle state filters from Dashboard (e.g., 'Jammu')
+  const [selectedState, setSelectedState] = useState<string>(stateFilters?.state || 'all')
 
   // Scraper pipeline hook
   const { isRunning, loading, statusLoaded, error, status, trigger, stop } = usePipeline()
@@ -88,24 +99,31 @@ export default function TendersPage() {
   const isBusy = isRunning || loading || pendingStart || !statusLoaded
   const lastSuccess = status?.last_result?.success
 
-  const { data, isLoading: isLoadingAll, isFetchingNextPage, fetchNextPage, hasNextPage } = useTenders(filters)
+  // Use the new useTendersAll hook to avoid pagination
+  const { data: allTendersData, isLoading: isLoadingAll } = useTendersAll(filters)
   const { data: todaysTenders = [], isLoading: isLoadingToday } = useTodaysTenders()
-  const allTenders = data?.pages.flatMap(p => p.tenders) ?? []
-  const total = data?.pages[0]?.total ?? 0
+
+  const allTenders = allTendersData ?? []
 
   const activeTodaysTenders = todaysTenders.filter(t => !t.deleted_at)
 
-  const visibleTenders = selectedKeywords.length
-    ? allTenders.filter(t => selectedKeywords.every(keyword => t.keywords_matched?.includes(keyword)))
-    : allTenders
+  const visibleTenders = allTenders.filter((t: Tender) => {
+    const keywordMatch = selectedKeywords.length
+      ? selectedKeywords.every(keyword => t.keywords_matched?.includes(keyword))
+      : true
+
+    const stateMatch = selectedState === 'all'
+      ? true
+      : extractState(t.location || t.source_site || '') === selectedState
+
+    return keywordMatch && stateMatch
+  })
 
   const displayedCount = eprocView === 'today'
     ? activeTodaysTenders.length
-    : (selectedKeywords.length ? visibleTenders.length : total)
+    : visibleTenders.length
 
-  const sentinelRef = useInView(() => {
-    if (hasNextPage && !isFetchingNextPage) fetchNextPage()
-  })
+  const sentinelRef = useInView(() => {})
 
   const applySearch = useCallback(() => {
     setFilters(f => ({ ...f, search: search || undefined }))
@@ -133,6 +151,7 @@ export default function TendersPage() {
     setSelectedKeywords([])
     setKeywordQuery('')
     setShowKeywordDropdown(false)
+    setSelectedState('all')
   }
 
   useEffect(() => {
@@ -165,15 +184,14 @@ export default function TendersPage() {
         >
           <SlidersHorizontal size={13} />
           Filters
-          {(activeFilters.length + selectedKeywords.length) > 0 && (
+          {(activeFilters.length + selectedKeywords.length + (selectedState !== 'all' ? 1 : 0)) > 0 && (
             <span className="bg-blue-600 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center">
-              {activeFilters.length + selectedKeywords.length}
+              {activeFilters.length + selectedKeywords.length + (selectedState !== 'all' ? 1 : 0)}
             </span>
           )}
         </button>
       </div>
 
-      {/* eProcurement Scraper Control Card */}
       <div className="glass-card rounded-xl p-5 relative overflow-hidden">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -238,7 +256,6 @@ export default function TendersPage() {
         </div>
       </div>
 
-      {/* Sub-tabs for All eProcurement and Today's eProcurement */}
       <div className="flex flex-wrap gap-2 mt-4">
         <button
           type="button"
@@ -362,7 +379,14 @@ export default function TendersPage() {
             <input type="date" value={filters.deadline_before ?? ''} onChange={e => setFilters(f => ({ ...f, deadline_before: e.target.value || undefined }))}
               className="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none" />
           </div>
-
+          <div>
+            <label className="text-xs font-medium text-slate-500 block mb-1">State</label>
+            <select value={selectedState} onChange={e => setSelectedState(e.target.value)}
+              className="w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none">
+              <option value="all">All States</option>
+              {COMMON_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
           {/* Status filter */}
           <div>
             <label className="text-xs font-medium text-slate-500 block mb-1">Status</label>
@@ -379,8 +403,7 @@ export default function TendersPage() {
           </div>
         </div>
       )}
-
-      {(activeFilters.length > 0 || selectedKeywords.length > 0) && (
+      {(activeFilters.length > 0 || selectedKeywords.length > 0 || selectedState !== 'all') && (
         <div className="flex flex-wrap gap-2">
           {activeFilters.map(([key, val]) => (
             <span key={key} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-full">
@@ -401,10 +424,17 @@ export default function TendersPage() {
               </button>
             </span>
           ))}
+          {selectedState !== 'all' && (
+            <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-full">
+              state: {selectedState}
+              <button onClick={() => setSelectedState('all')}>
+                <X size={10} />
+              </button>
+            </span>
+          )}
           <button onClick={clearAll} className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1">Clear all</button>
         </div>
       )}
-
       {(eprocView === 'today' ? isLoadingToday : isLoadingAll) ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 size={20} className="animate-spin text-blue-500" />
@@ -417,7 +447,7 @@ export default function TendersPage() {
           {(eprocView === 'today' ? activeTodaysTenders : visibleTenders).map(t => <TenderCard key={t.id} tender={t} />)}
           {eprocView === 'all' && (
             <div ref={sentinelRef} className="py-4 flex justify-center">
-              {isFetchingNextPage && <Loader2 size={16} className="animate-spin text-blue-400" />}
+              {/* Sentinel removed as pagination is no longer used with useTendersAll */}
             </div>
           )}
         </div>

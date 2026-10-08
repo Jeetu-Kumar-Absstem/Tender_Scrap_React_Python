@@ -1,3 +1,4 @@
+// src/hooks/useTenders.ts
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import type { Tender, ScrapeRun, TenderFilters, DashboardStats } from '../types/tender'
@@ -50,6 +51,46 @@ export function useTenders(filters: TenderFilters = {}) {
       }
     },
     getNextPageParam: (last) => last.hasMore ? last.page + 1 : undefined,
+  })
+}
+
+export function useTendersAll(filters: TenderFilters = {}) {
+  return useQuery({
+    queryKey: ['tenders-all', filters],
+    queryFn: async () => {
+      let query = supabase
+        .from('tenders')
+        .select('*')
+        .is('deleted_at', null)
+        .eq('status', 'PASS')
+        .order('scraped_at', { ascending: false })
+
+      if (filters.source_site) query = query.eq('source_site', filters.source_site)
+      if (filters.site_type)   query = query.eq('site_type', filters.site_type)
+      if (filters.deadline_after)  query = query.gte('deadline', filters.deadline_after)
+      if (filters.deadline_before) query = query.lte('deadline', filters.deadline_before)
+      if (filters.date_from) query = query.gte('scraped_at', filters.date_from)
+      if (filters.date_to)   query = query.lte('scraped_at', filters.date_to)
+      if (filters.keyword) query = query.contains('keywords_matched', [filters.keyword])
+
+      if (filters.user_status && filters.user_status !== 'all') {
+        if (filters.user_status === 'active') {
+          query = query.in('user_status', ['active', 'starred'])
+        } else {
+          query = query.eq('user_status', filters.user_status)
+        }
+      }
+
+      if (filters.search) {
+        query = query.or(
+          `title.ilike.%${filters.search}%,organization.ilike.%${filters.search}%,reference_number.ilike.%${filters.search}%`
+        )
+      }
+
+      const { data, error } = await query
+      if (error) throw new Error(error.message)
+      return (data ?? []) as Tender[]
+    },
   })
 }
 
@@ -140,7 +181,6 @@ export function useDashboardStats() {
         gem_today: gemToday,
         sites_monitored: Object.keys(siteCounts).length,
         last_run_at: lastRun?.started_at ?? null,
-        last_run_status: lastRun?.status ?? null,
         tenders_by_site: Object.entries(siteCounts).map(([site, count]) => ({ site, count })).sort((a, b) => b.count - a.count).slice(0, 10),
         tenders_by_keyword: Object.entries(kwCounts).map(([keyword, count]) => ({ keyword, count })).sort((a, b) => b.count - a.count),
         gem_keywords: Object.entries(gemKwCounts).map(([keyword, count]) => ({ keyword, count })).sort((a, b) => b.count - a.count),
@@ -154,7 +194,7 @@ export function useScrapeRuns(limit = 10) {
   return useQuery({
     queryKey: ['scrape-runs', limit],
     queryFn: async () => {
-      const { data, error } = await supabase.from('scrape_runs').select('*').is('deleted_at', null).order('started_at', { ascending: false }).limit(limit)
+      const { data, error } = await supabase.from('scrape_runs').select('*').is('deleted_at', null).order('scraped_at', { ascending: false }).limit(limit)
       if (error) throw new Error(error.message)
       return (data ?? []) as ScrapeRun[]
     },

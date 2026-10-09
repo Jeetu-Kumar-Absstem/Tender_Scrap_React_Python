@@ -1,11 +1,12 @@
 // src/components/dashboard/Layout.tsx
+import { useEffect, useRef, useState } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, FileSearch, Activity, X, ChevronUp, AlertTriangle, Terminal, ChevronDown, Trash2, LogOut, Hospital, Globe, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
-import { usePipeline } from '../../hooks/usePipeline'
-import { useLogs } from '../../hooks/useLogs'
-import { supabase } from '../../lib/supabase'
+import { LayoutDashboard, FileSearch, Activity, X, ChevronUp, AlertTriangle, Terminal, ChevronDown, Trash2, LogOut, Hospital, Globe, PanelLeftClose, PanelLeftOpen, Menu } from 'lucide-react'
 import { clsx } from 'clsx'
-import { useState, useEffect, useRef } from 'react'
+import { useLogs } from '../../hooks/useLogs'
+import { usePipeline } from '../../hooks/usePipeline'
+import { supabase } from '../../lib/supabase'
+
 
 const lufgaRegularStyle  = { fontFamily: "'Lufga', sans-serif", fontWeight: 400 } as const
 const lufgaSemiboldStyle = { fontFamily: "'Lufga', sans-serif", fontWeight: 600 } as const
@@ -223,6 +224,7 @@ export default function Layout() {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     return localStorage.getItem('tenderpulse_sidebar_collapsed') === 'true'
   })
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   useEffect(() => {
     localStorage.setItem('tenderpulse_sidebar_collapsed', String(isCollapsed))
@@ -257,10 +259,30 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">
+      {/* Mobile Header */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-12 bg-white border-b border-slate-200 flex items-center justify-between px-4 z-[100]">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 bg-blue-600 rounded flex items-center justify-center">
+            <Activity size={14} className="text-white" />
+          </div>
+          <span className="font-semibold text-slate-900 text-sm" style={lufgaSemiboldStyle}>
+            TenderHub
+          </span>
+        </div>
+        <button
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="p-2 rounded-lg text-slate-600 hover:bg-slate-100"
+        >
+          {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
+      </div>
+
       {/* Sidebar */}
       <aside className={clsx(
-        'flex-shrink-0 glass-card border-r border-slate-200/80 flex flex-col transition-all duration-300 ease-in-out',
-        logsOpen ? 'w-80' : isCollapsed ? 'w-16' : 'w-60'
+        'fixed lg:relative z-[90] flex-shrink-0 glass-card border-r border-slate-200/80 flex flex-col transition-all duration-300 ease-in-out',
+        isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+        logsOpen ? 'w-80' : isCollapsed ? 'w-16' : 'w-60',
+        'h-full'
       )}>
         <div className="flex flex-col flex-1 overflow-hidden">
           <div className="flex flex-col flex-1 overflow-y-auto">
@@ -270,10 +292,18 @@ export default function Layout() {
         </div>
       </aside>
 
+      {/* Mobile Overlay */}
+      {isMobileMenuOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-[80]"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden pt-12 lg:pt-0">
         {/* Top bar with Sign Out */}
-        <div className="flex-shrink-0 h-10 bg-white border-b border-slate-200 flex items-center justify-end px-4">
+        <div className="hidden lg:flex flex-shrink-0 h-10 bg-white border-b border-slate-200 items-center justify-end px-4">
           <button
             onClick={handleSignOut}
             className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-red-500 transition-colors px-2 py-1 rounded hover:bg-red-50"
@@ -286,8 +316,8 @@ export default function Layout() {
           <Outlet />
         </main>
         {/* Footer */}
-        <footer className="flex-shrink-0 border-t border-slate-200 bg-white px-6 py-2 flex items-center justify-between">
-          <p className="text-[10px] text-slate-400">
+        <footer className="flex-shrink-0 border-t border-slate-200 bg-white px-4 py-2 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <p className="text-[10px] text-slate-400 text-center sm:text-left">
             © {new Date().getFullYear()} Absstem Technologies. All rights reserved.
           </p>
           <div className="flex items-center gap-3">

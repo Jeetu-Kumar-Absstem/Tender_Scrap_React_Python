@@ -185,9 +185,9 @@ export function useDashboardStats() {
   })
 }
 
-export function useUserActionStats() {
+export function useUserActionStats(filters: TenderFilters = {}) {
   return useQuery({
-    queryKey: ['user-action-stats'],
+    queryKey: ['user-action-stats', filters],
     queryFn: async (): Promise<UserActionStats> => {
       const trackedStatuses: UserStatus[] = ['applied', 'not_in_scope', 'not_qualified', 'starred']
       const counts: UserActionStats = {
@@ -197,20 +197,41 @@ export function useUserActionStats() {
         starred: 0,
       }
 
-      const [eprocRes, gemRes] = await Promise.all([
-        supabase
-          .from('tenders')
-          .select('user_status')
-          .is('deleted_at', null)
-          .eq('status', 'PASS')
-          .in('user_status', trackedStatuses),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase as any)
-          .from('gem_tenders')
-          .select('user_status')
-          .is('deleted_at', null)
-          .in('user_status', trackedStatuses),
-      ])
+      // 1. Build query for eProc (tenders table)
+      let eprocQuery = supabase
+        .from('tenders')
+        .select('user_status')
+        .is('deleted_at', null)
+        .eq('status', 'PASS')
+        .in('user_status', trackedStatuses)
+
+      if (filters.date_from) eprocQuery = eprocQuery.gte('scraped_at', filters.date_from)
+      if (filters.date_to)   eprocQuery = eprocQuery.lte('scraped_at', filters.date_to)
+      if (filters.keyword)   eprocQuery = eprocQuery.contains('keywords_matched', [filters.keyword])
+      if (filters.source_site) eprocQuery = eprocQuery.eq('source_site', filters.source_site)
+      if (filters.site_type)   eprocQuery = eprocQuery.eq('site_type', filters.site_type)
+      if (filters.user_status && filters.user_status !== 'all') {
+        eprocQuery = eprocQuery.eq('user_status', filters.user_status)
+      }
+      // Note: state filtering for eProc is often handled client-side in DashboardPage via extractState,
+      // but if we want accurate counts, we should ideally have a state column.
+      // For now, we apply server-side filters available in TenderFilters.
+
+      // 2. Build query for GeM (gem_tenders table)
+      let gemQuery = (supabase as any)
+        .from('gem_tenders')
+        .select('user_status')
+        .is('deleted_at', null)
+        .in('user_status', trackedStatuses)
+
+      if (filters.date_from) gemQuery = gemQuery.gte('scraped_at', filters.date_from)
+      if (filters.date_to)   gemQuery = gemQuery.lte('scraped_at', filters.date_to)
+      if (filters.keyword)   gemQuery = gemQuery.contains('keywords_matched', [filters.keyword])
+      if (filters.user_status && filters.user_status !== 'all') {
+        gemQuery = gemQuery.eq('user_status', filters.user_status)
+      }
+
+      const [eprocRes, gemRes] = await Promise.all([eprocQuery, gemQuery])
 
       if (eprocRes.error) throw new Error(eprocRes.error.message)
       if (gemRes.error) throw new Error(gemRes.error.message)
@@ -223,10 +244,8 @@ export function useUserActionStats() {
 
       return counts
     },
-    staleTime: Infinity,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
+    staleTime: 0, // Set to 0 so it updates immediately when filters change
+    refetchOnMount: true,
   })
 }
 

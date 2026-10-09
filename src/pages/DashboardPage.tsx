@@ -72,7 +72,6 @@ function ActionStatCard({ label, value, icon: Icon, color }: {
 export default function DashboardPage() {
   const navigate = useNavigate()
   const { data: stats }  = useDashboardStats()
-  const { data: actionStats } = useUserActionStats()
   const { data: todaysEproc = [] } = useTodaysTenders()
   const { data: todaysGem = [] } = useGemTodayTenders()
 
@@ -88,6 +87,12 @@ export default function DashboardPage() {
   })
   const [selectedState, setSelectedState] = useState<string>('all')
   const [searchKeyword, setSearchKeyword] = useState<string>('')
+
+  const { data: actionStats } = useUserActionStats({
+    date_from: dateFrom,
+    date_to: dateTo,
+    keyword: searchKeyword,
+  })
 
   // Data for Analysis
   const { data: eprocTenders = [], data: eprocTotalCount } = useTenders({

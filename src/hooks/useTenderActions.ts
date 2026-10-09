@@ -14,6 +14,8 @@ export function useTenderActions() {
     qc.invalidateQueries({ queryKey: ['archive-eproc-tenders'] })
     qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
     qc.invalidateQueries({ queryKey: ['user-action-stats'] })
+    // Explicitly invalidate all variations of tenders queries
+    qc.invalidateQueries({ queryKey: ['tenders-all'] })
   }
 
   const setStatus = useMutation({

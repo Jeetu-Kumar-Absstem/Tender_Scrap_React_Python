@@ -5,7 +5,7 @@ export type SiteType = 'A' | 'B' | 'C' | 'D'
 export type TenderStatus = 'PASS' | 'REJECT' | 'ERROR'
 export type RunStatus = 'running' | 'completed' | 'failed'
 // Add this type
-export type UserStatus = 'active' | 'done' | 'starred'
+export type UserStatus = 'active' | 'applied' | 'expired' | 'not_in_scope' | 'not_qualified' | 'starred'
 
 
 
@@ -95,4 +95,11 @@ export interface DashboardStats {
   tenders_by_site: { site: string; count: number }[]
   tenders_by_keyword: { keyword: string; count: number }[]
   gem_keywords: { keyword: string; count: number }[]
+}
+
+export interface UserActionStats {
+  applied: number
+  not_in_scope: number
+  not_qualified: number
+  starred: number
 }

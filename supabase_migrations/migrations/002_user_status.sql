@@ -6,7 +6,7 @@
 -- Add user_status to tenders table
 alter table tenders
   add column if not exists user_status text
-    check (user_status in ('active', 'done', 'starred'))
+    check (user_status in ('active', 'applied', 'expired', 'not_in_scope', 'not_qualified', 'starred'))
     default 'active' not null;
 
 create index if not exists idx_tenders_user_status on tenders(user_status);

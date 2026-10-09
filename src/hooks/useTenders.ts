@@ -1,7 +1,7 @@
 // src/hooks/useTenders.ts
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
-import type { Tender, ScrapeRun, TenderFilters, DashboardStats } from '../types/tender'
+import type { Tender, ScrapeRun, TenderFilters, DashboardStats, UserActionStats, UserStatus } from '../types/tender'
 
 const PAGE_SIZE = 25
 
@@ -28,11 +28,7 @@ export function useTenders(filters: TenderFilters = {}) {
 
       // user_status filter
       if (filters.user_status && filters.user_status !== 'all') {
-        if (filters.user_status === 'active') {
-          query = query.in('user_status', ['active', 'starred'])
-        } else {
-          query = query.eq('user_status', filters.user_status)
-        }
+        query = query.eq('user_status', filters.user_status)
       }
 
       if (filters.search) {
@@ -74,11 +70,7 @@ export function useTendersAll(filters: TenderFilters = {}) {
       if (filters.keyword) query = query.contains('keywords_matched', [filters.keyword])
 
       if (filters.user_status && filters.user_status !== 'all') {
-        if (filters.user_status === 'active') {
-          query = query.in('user_status', ['active', 'starred'])
-        } else {
-          query = query.eq('user_status', filters.user_status)
-        }
+        query = query.eq('user_status', filters.user_status)
       }
 
       if (filters.search) {
@@ -109,7 +101,6 @@ export function useTodaysTenders() {
       if (error) throw new Error(error.message)
       return (data ?? []) as Tender[]
     },
-    refetchInterval: 5 * 60 * 1000,
   })
 }
 
@@ -187,7 +178,55 @@ export function useDashboardStats() {
         gem_keywords: Object.entries(gemKwCounts).map(([keyword, count]) => ({ keyword, count })).sort((a, b) => b.count - a.count),
       }
     },
-    refetchInterval: 60_000,
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  })
+}
+
+export function useUserActionStats() {
+  return useQuery({
+    queryKey: ['user-action-stats'],
+    queryFn: async (): Promise<UserActionStats> => {
+      const trackedStatuses: UserStatus[] = ['applied', 'not_in_scope', 'not_qualified', 'starred']
+      const counts: UserActionStats = {
+        applied: 0,
+        not_in_scope: 0,
+        not_qualified: 0,
+        starred: 0,
+      }
+
+      const [eprocRes, gemRes] = await Promise.all([
+        supabase
+          .from('tenders')
+          .select('user_status')
+          .is('deleted_at', null)
+          .eq('status', 'PASS')
+          .in('user_status', trackedStatuses),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase as any)
+          .from('gem_tenders')
+          .select('user_status')
+          .is('deleted_at', null)
+          .in('user_status', trackedStatuses),
+      ])
+
+      if (eprocRes.error) throw new Error(eprocRes.error.message)
+      if (gemRes.error) throw new Error(gemRes.error.message)
+
+      for (const row of [...(eprocRes.data ?? []), ...(gemRes.data ?? [])] as { user_status: UserStatus }[]) {
+        if (row.user_status in counts) {
+          counts[row.user_status as keyof UserActionStats] += 1
+        }
+      }
+
+      return counts
+    },
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 }
 

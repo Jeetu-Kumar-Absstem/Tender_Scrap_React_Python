@@ -40,7 +40,7 @@ create table if not exists public.tenders (
   constraint tenders_user_status_check check (
     (
       user_status = any (
-        array['active'::text, 'done'::text, 'starred'::text]
+        array['active'::text, 'applied'::text, 'expired'::text, 'not_in_scope'::text, 'not_qualified'::text, 'starred'::text]
       )
     )
   )

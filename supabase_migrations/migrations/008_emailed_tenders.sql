@@ -3,7 +3,7 @@
 -- Purpose  : Append-only email-dedup log for Type B tenders.
 --
 -- Problem solved:
---   A user marks a tender "done" or it gets soft-deleted
+--   A user marks a tender with a follow-up action or it gets soft-deleted
 --   (deleted_at set) before its deadline. Next scraper run
 --   re-scrapes it, insert_tender() succeeds (new uuid, same
 --   ref/url_hash hits the UNIQUE constraint so it either

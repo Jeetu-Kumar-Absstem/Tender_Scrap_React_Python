@@ -6,8 +6,27 @@ import { format, parseISO, isAfter, startOfDay, isToday } from 'date-fns'
 import { clsx } from 'clsx'
 import { useGemTendersActions, useArchiveGemActions } from '../../hooks/useGemTenders'
 import type { GemTender } from '../../types/gemTender'
+import type { UserStatus } from '../../types/tender'
 
 interface Props { tender: GemTender }
+
+const userStatusBadge: Record<UserStatus, string> = {
+  active: 'bg-slate-50 text-slate-500 border-slate-200',
+  applied: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  expired: 'bg-red-50 text-red-700 border-red-200',
+  not_in_scope: 'bg-slate-50 text-slate-600 border-slate-200',
+  not_qualified: 'bg-orange-50 text-orange-700 border-orange-200',
+  starred: 'bg-amber-50 text-amber-700 border-amber-200',
+}
+
+const userStatusLabel: Record<UserStatus, string> = {
+  active: 'Active',
+  applied: 'Applied',
+  expired: 'Expired',
+  not_in_scope: 'Not in Scope',
+  not_qualified: 'Not Qualified',
+  starred: 'Starred',
+}
 
 function ActionMenu({ tender, onClose, onDeleteClick }: {
   tender: GemTender
@@ -27,25 +46,45 @@ function ActionMenu({ tender, onClose, onDeleteClick }: {
     return () => document.removeEventListener('mousedown', handler)
   }, [onClose])
 
-  const isDone = tender.user_status === 'done'
   const isStarred = tender.user_status === 'starred'
 
-  const handleStatusUpdate = (status: 'active' | 'done' | 'starred') => {
-    updateStatus.mutate({ id: tender.id, user_status: status })
+  const handleStatusUpdate = (status: UserStatus) => {
+    updateStatus.mutate({
+      id: tender.id,
+      reference_number: tender.reference_number,
+      url_hash: tender.url_hash,
+      user_status: tender.user_status === status ? 'active' : status,
+    })
     onClose()
   }
 
   return (
     <div
       ref={menuRef}
-      className="absolute right-0 top-7 z-50 bg-white rounded-lg shadow-lg border border-slate-200 py-1 w-44 text-sm"
+      className="absolute right-0 top-7 z-[100] max-h-40 w-48 overflow-y-auto overscroll-contain bg-white rounded-lg shadow-lg border border-slate-200 py-1 text-sm"
     >
       <button
-        onClick={() => handleStatusUpdate(isDone ? 'active' : 'done')}
+        onClick={() => handleStatusUpdate('applied')}
         className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-50 text-left text-slate-700"
       >
-        <CheckCircle2 size={13} className={isDone ? 'text-emerald-500' : 'text-slate-400'} />
-        {isDone ? 'Unmark Done' : 'Mark as Done'}
+        <CheckCircle2 size={13} className={tender.user_status === 'applied' ? 'text-emerald-500' : 'text-slate-400'} />
+        Applied
+      </button>
+
+      <button
+        onClick={() => handleStatusUpdate('not_in_scope')}
+        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-50 text-left text-slate-700"
+      >
+        <X size={13} className={tender.user_status === 'not_in_scope' ? 'text-slate-600' : 'text-slate-400'} />
+        Not in Scope
+      </button>
+
+      <button
+        onClick={() => handleStatusUpdate('not_qualified')}
+        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-50 text-left text-slate-700"
+      >
+        <AlertTriangle size={13} className={tender.user_status === 'not_qualified' ? 'text-orange-500' : 'text-slate-400'} />
+        Not Qualified
       </button>
 
       <button
@@ -144,7 +183,8 @@ export default function GemTenderCard({ tender }: Props) {
     ? isToday(parseISO(tender.deadline))
     : false
 
-  const isDone = tender.user_status === 'done'
+  const isApplied = tender.user_status === 'applied'
+  const isInactiveStatus = ['expired', 'not_in_scope', 'not_qualified'].includes(tender.user_status)
   const isStarred = tender.user_status === 'starred'
 
   // Auto-archive expired tenders
@@ -193,16 +233,18 @@ export default function GemTenderCard({ tender }: Props) {
       transition={{ duration: 0.2 }}
       className={clsx(
         'glass-card rounded-xl p-4 transition-all relative',
-        isDone && 'opacity-60 border-slate-200 bg-slate-50/50',
+        isApplied && 'border-emerald-200/80 bg-emerald-50/40',
+        isInactiveStatus && 'opacity-70 border-slate-200 bg-slate-50/60',
         isStarred && 'border-amber-200/80 bg-amber-50/40 shadow-amber-50/20',
-        !isDone && !isStarred && 'glass-card-hover',
+        menuOpen && 'z-[80]',
+        !isApplied && !isInactiveStatus && !isStarred && 'glass-card-hover',
       )}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <h3 className={clsx(
             'text-sm font-semibold leading-snug line-clamp-2',
-            isDone ? 'line-through text-slate-400' : 'text-slate-900'
+            isInactiveStatus ? 'line-through text-slate-400' : 'text-slate-900'
           )}>
             {tender.title ?? 'Untitled Tender'}
           </h3>
@@ -222,9 +264,9 @@ export default function GemTenderCard({ tender }: Props) {
             {tender.user_status !== 'active' && (
               <span className={clsx(
                 'text-[11px] font-medium px-2 py-0.5 rounded border',
-                isDone ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                userStatusBadge[tender.user_status] ?? userStatusBadge.active
               )}>
-                {isDone ? 'Done' : 'Starred'}
+                {userStatusLabel[tender.user_status] ?? tender.user_status}
               </span>
             )}
             {expiringToday && (

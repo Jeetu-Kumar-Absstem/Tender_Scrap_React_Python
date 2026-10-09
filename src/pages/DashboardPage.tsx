@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react'
-import { useDashboardStats, useTodaysTenders, useTenders } from '../hooks/useTenders'
+import { useDashboardStats, useTodaysTenders, useTenders, useUserActionStats } from '../hooks/useTenders'
 import { useGemTodayTenders } from '../hooks/useGemTenders'
 import { useAllGemTenders } from '../hooks/useAllGemTenders'
-import { TrendingUp, FileText, Shield, ArrowRight, FileSearch, Calendar, MapPin, Search, X, RotateCcw } from 'lucide-react'
+import { TrendingUp, FileText, Shield, ArrowRight, FileSearch, Calendar, MapPin, Search, X, RotateCcw, CheckCircle2, AlertTriangle, Star } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { clsx } from 'clsx'
@@ -47,9 +47,32 @@ function StatCard({ label, value, sub, icon: Icon, color }: {
   )
 }
 
+function ActionStatCard({ label, value, icon: Icon, color }: {
+  label: string; value: string | number; icon: any; color: string
+}) {
+  return (
+    <motion.div
+      whileHover={{ y: -3 }}
+      transition={{ duration: 0.2 }}
+      className="glass-card glass-card-hover rounded-xl p-5"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-slate-500">{label}</p>
+          <p className="text-2xl font-semibold text-slate-900 mt-1 tabular-nums">{value}</p>
+        </div>
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shadow-sm ${color}`}>
+          <Icon size={16} className="text-white" />
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate()
   const { data: stats }  = useDashboardStats()
+  const { data: actionStats } = useUserActionStats()
   const { data: todaysEproc = [] } = useTodaysTenders()
   const { data: todaysGem = [] } = useGemTodayTenders()
 
@@ -160,6 +183,13 @@ export default function DashboardPage() {
   const totalCombined = stats?.total_tenders || 1
   const gemPercentage = Math.round((gemTotal / totalCombined) * 100)
   const eprocPercentage = Math.round((eprocTotal / totalCombined) * 100)
+
+  const actionStatCards = [
+    { label: 'Applied', value: actionStats?.applied ?? 0, icon: CheckCircle2, color: 'bg-emerald-500' },
+    { label: 'Not in Scope', value: actionStats?.not_in_scope ?? 0, icon: X, color: 'bg-slate-500' },
+    { label: 'Not Qualified', value: actionStats?.not_qualified ?? 0, icon: AlertTriangle, color: 'bg-orange-500' },
+    { label: 'Starred', value: actionStats?.starred ?? 0, icon: Star, color: 'bg-amber-500' },
+  ]
 
   const handleQuickDate = (months: number) => {
     // Set both ends so the highlighted chip always matches what is applied
@@ -274,7 +304,11 @@ export default function DashboardPage() {
         </motion.div>
 
         {/* Independent eProcurement Keywords */}
-        <div className="glass-card rounded-xl p-5">
+        <motion.div
+          whileHover={{ y: -2 }}
+          transition={{ duration: 0.2 }}
+          className="glass-card rounded-xl p-5"
+        >
           <div className="flex items-center gap-2 mb-3">
             <FileSearch size={15} className="text-blue-600" />
             <h2 className="text-sm font-semibold text-slate-700" style={lufgaSemiboldStyle}>
@@ -293,10 +327,14 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
-        </div>
+        </motion.div>
 
         {/* Independent GeM Keywords */}
-        <div className="glass-card rounded-xl p-5">
+        <motion.div
+          whileHover={{ y: -2 }}
+          transition={{ duration: 0.2 }}
+          className="glass-card rounded-xl p-5"
+        >
           <div className="flex items-center gap-2 mb-3">
             <Shield size={15} className="text-indigo-600" />
             <h2 className="text-sm font-semibold text-slate-700" style={lufgaSemiboldStyle}>
@@ -315,7 +353,7 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* Tenders Analysis Section */}
@@ -338,7 +376,11 @@ export default function DashboardPage() {
         </div>
 
         {/* Filters */}
-        <div className="glass-card rounded-xl p-5 space-y-5">
+        <motion.div
+          whileHover={{ y: -2 }}
+          transition={{ duration: 0.2 }}
+          className="glass-card rounded-xl p-5 space-y-5"
+        >
           {/* Keyword search comes first: it's the most-used filter */}
           <div className="relative">
             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -451,11 +493,15 @@ export default function DashboardPage() {
               </select>
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Results */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="glass-card rounded-xl p-5 sm:col-span-2 flex items-center justify-between gap-4">
+          <motion.div
+            whileHover={{ y: -3 }}
+            transition={{ duration: 0.2 }}
+            className="glass-card glass-card-hover rounded-xl p-5 sm:col-span-2 flex items-center justify-between gap-4"
+          >
             <div className="min-w-0">
               <p className="text-sm font-medium text-slate-500">Tenders found</p>
               <p className="text-4xl font-semibold text-slate-900 mt-1 tabular-nums" style={lufgaSemiboldStyle}>
@@ -474,17 +520,16 @@ export default function DashboardPage() {
             >
               View these tenders <ArrowRight size={13} />
             </button>
-          </div>
+          </motion.div>
 
-          {/* Not built yet: dashed + muted so they read as placeholders, not as zeros */}
-          {['Applied', 'Rejected'].map(label => (
-            <div key={label} className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-5">
-              <p className="text-sm font-medium text-slate-500">{label}</p>
-              <p className="text-2xl font-semibold text-slate-300 mt-1">–</p>
-              <span className="inline-block mt-2 text-[11px] font-medium text-slate-500 bg-white border border-slate-200 rounded-full px-2 py-0.5">
-                Coming soon
-              </span>
-            </div>
+          {actionStatCards.map(card => (
+            <ActionStatCard
+              key={card.label}
+              label={card.label}
+              value={card.value}
+              icon={card.icon}
+              color={card.color}
+            />
           ))}
         </div>
       </section>

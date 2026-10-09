@@ -13,6 +13,7 @@ export function useTenderActions() {
     qc.invalidateQueries({ queryKey: ['tenders', 'today'] })
     qc.invalidateQueries({ queryKey: ['archive-eproc-tenders'] })
     qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
+    qc.invalidateQueries({ queryKey: ['user-action-stats'] })
   }
 
   const setStatus = useMutation({

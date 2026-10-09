@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS today_gem_tenders (
     url_hash TEXT UNIQUE NOT NULL,
     keywords_matched TEXT[] DEFAULT '{}',
     matched_category TEXT,
-    user_status TEXT DEFAULT 'active' CHECK (user_status IN ('active', 'done', 'starred')),
+    user_status TEXT DEFAULT 'active' CHECK (user_status IN ('active', 'applied', 'expired', 'not_in_scope', 'not_qualified', 'starred')),
     scraped_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

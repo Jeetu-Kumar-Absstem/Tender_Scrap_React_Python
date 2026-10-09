@@ -2,6 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import type { GemTender } from '../types/gemTender'
+import type { UserStatus } from '../types/tender'
 
 export type { GemTender }
 
@@ -58,17 +59,38 @@ export function useGemTendersActions() {
   const queryClient = useQueryClient()
 
   const updateStatus = useMutation({
-    mutationFn: async ({ id, user_status }: { id: string; user_status: 'active' | 'done' | 'starred' }) => {
-      const { error } = await db
-        .from('gem_tenders')
-        .update({ user_status })
-        .eq('id', id)
+    mutationFn: async ({
+      id,
+      reference_number,
+      url_hash,
+      user_status,
+    }: {
+      id: string
+      reference_number?: string | null
+      url_hash?: string | null
+      user_status: UserStatus
+    }) => {
+      const matchers = [
+        { column: 'id', value: id },
+        { column: 'reference_number', value: reference_number },
+        { column: 'url_hash', value: url_hash },
+      ].filter((matcher): matcher is { column: string; value: string } => Boolean(matcher.value))
 
-      if (error) throw new Error(error.message)
+      for (const table of ['gem_tenders', 'today_gem_tenders']) {
+        for (const matcher of matchers) {
+          const { error } = await db
+            .from(table)
+            .update({ user_status })
+            .eq(matcher.column, matcher.value)
+
+          if (error) throw new Error(error.message)
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gem-tenders'] })
       queryClient.invalidateQueries({ queryKey: ['gem-tenders', 'today'] })
+      queryClient.invalidateQueries({ queryKey: ['user-action-stats'] })
     },
   })
 

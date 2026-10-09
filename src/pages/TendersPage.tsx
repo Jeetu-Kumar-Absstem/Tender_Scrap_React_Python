@@ -397,8 +397,11 @@ export default function TendersPage() {
             >
               <option value="all">All</option>
               <option value="active">Active</option>
-              <option value="starred">★ Starred</option>
-              <option value="done">✓ Done</option>
+              <option value="applied">Applied</option>
+              <option value="expired">Expired</option>
+              <option value="not_in_scope">Not in Scope</option>
+              <option value="not_qualified">Not Qualified</option>
+              <option value="starred">Starred</option>
             </select>
           </div>
         </div>

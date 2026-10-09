@@ -115,6 +115,7 @@ export function useArchiveGemActions() {
       queryClient.invalidateQueries({ queryKey: ['gem-tenders', 'today'] })
       queryClient.invalidateQueries({ queryKey: ['archive-gem-tenders'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      queryClient.invalidateQueries({ queryKey: ['user-action-stats'] })
     },
   })
 

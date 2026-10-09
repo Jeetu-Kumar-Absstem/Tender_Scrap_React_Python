@@ -1,5 +1,7 @@
 // src/types/gemTender.ts
 
+import type { UserStatus } from './tender'
+
 export interface GemTender {
   id: string
   title: string | null
@@ -11,7 +13,7 @@ export interface GemTender {
   source_url: string
   url_hash: string
   keywords_matched: string[]
-  user_status: 'active' | 'done' | 'starred'
+  user_status: UserStatus
   scraped_at: string
   created_at: string
   updated_at: string

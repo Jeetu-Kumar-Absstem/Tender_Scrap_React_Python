@@ -125,6 +125,7 @@ export function useArchiveEprocActions() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenders'] })
       queryClient.invalidateQueries({ queryKey: ['archive-eproc-tenders'] })
+      queryClient.invalidateQueries({ queryKey: ['user-action-stats'] })
     },
   })
 

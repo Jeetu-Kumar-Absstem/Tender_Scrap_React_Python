@@ -1,6 +1,6 @@
 // src/components/dashboard/Layout.tsx
 import { useEffect, useRef, useState } from 'react'
-import { Outlet, NavLink } from 'react-router-dom'
+import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { LayoutDashboard, FileSearch, Activity, X, ChevronUp, AlertTriangle, Terminal, ChevronDown, Trash2, LogOut, Hospital, Globe, PanelLeftClose, PanelLeftOpen, Menu } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useLogs } from '../../hooks/useLogs'
@@ -81,6 +81,7 @@ function SidebarContent({
   isDisclaimerVisible, handleDismiss,
   showDisclaimer,
   logsOpen, setLogsOpen,
+  onNavigate,
 }: any) {
   return (
     <>
@@ -114,6 +115,7 @@ function SidebarContent({
           <NavLink
             key={to}
             to={to}
+            onClick={onNavigate}
             title={isCollapsed ? label : undefined}
             className={({ isActive }) =>
               `flex items-center rounded-lg transition-all ${
@@ -225,6 +227,15 @@ export default function Layout() {
     return localStorage.getItem('tenderpulse_sidebar_collapsed') === 'true'
   })
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const location = useLocation()
+
+  // Close the mobile drawer whenever the route changes
+  useEffect(() => {
+    setIsMobileMenuOpen(false)
+  }, [location.pathname])
+
+  // The mobile drawer should always show the full (expanded) sidebar
+  const effectiveCollapsed = isCollapsed && !isMobileMenuOpen
 
   useEffect(() => {
     localStorage.setItem('tenderpulse_sidebar_collapsed', String(isCollapsed))
@@ -251,10 +262,11 @@ export default function Layout() {
 
   const sharedProps = {
     isRunning, loading, statusLoaded, error, status, trigger, stop,
-    isCollapsed, setIsCollapsed,
+    isCollapsed: effectiveCollapsed, setIsCollapsed,
     isDisclaimerMinimized, setIsDisclaimerMinimized,
     isDisclaimerVisible, handleDismiss, showDisclaimer,
     logsOpen, setLogsOpen,
+    onNavigate: () => setIsMobileMenuOpen(false),
   }
 
   return (
@@ -281,7 +293,7 @@ export default function Layout() {
       <aside className={clsx(
         'fixed lg:relative z-[90] flex-shrink-0 glass-card border-r border-slate-200/80 flex flex-col transition-all duration-300 ease-in-out',
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
-        logsOpen ? 'w-80' : isCollapsed ? 'w-16' : 'w-60',
+        logsOpen ? 'w-80' : effectiveCollapsed ? 'w-16' : 'w-60',
         'h-full'
       )}>
         <div className="flex flex-col flex-1 overflow-hidden">
